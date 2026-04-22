@@ -17,15 +17,11 @@ extern "C" {
 #include "ui_event_fun.h"
 #undef UI_DEFINE_UI_EVENT_FUN
 void app_card_click(lv_event_t * e);
-void app_store_key_handler(uint32_t key);
 
 
 void cpp_app_zuo(lv_obj_t *panel, lv_obj_t *label);
 void cpp_app_you(lv_obj_t *panel, lv_obj_t *label);
 void cpp_app_launch();
-void app_python_handle_key(uint32_t key);
-void app_python_switch(lv_event_t * e);
-
 #ifdef __cplusplus
 } /*extern "C"*/
 #endif

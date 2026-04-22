@@ -98,20 +98,7 @@ lv_font_t *g_font_mono_12 = NULL;   /* 终端专用等宽字体 */
 
 #include "ui_event_fun.h"
 
-void ui_event_app_card(lv_event_t * e) { 
-    lv_event_code_t event_code = lv_event_get_code(e); 
-    if(event_code == LV_EVENT_CLICKED) { 
-        app_card_click(e); 
-    }else if (event_code == LV_EVENT_DELETE)
-    {
-        lv_obj_t *obj  = lv_event_get_target(e);
-        void     *data = lv_obj_get_user_data(obj);
-        if (data) {
-            lv_free(data);
-            /* 无需 set NULL，对象即将销毁 */
-        }
-    }
-}
+
 
 #undef UI_DEFINE_UI_EVENT_FUN
 
@@ -155,14 +142,8 @@ void ui_init(void)
 
     // 初始化各个界面
     ui_Screen1_screen_init();
-    ui_AppStore_screen_init();
-    ui_APPNote_screen_init();
-    ui_AppStore1_screen_init();
-    ui_AppStore1_screen_init1();
 
-    // 二次界面初始化
-    create_dashboard(ui_Container4);
-    create_note_info(ui_Container1);
+
 
     // 界面信息绑定
     ui_info_bind();

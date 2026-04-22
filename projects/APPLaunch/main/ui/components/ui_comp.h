@@ -50,8 +50,7 @@ extern uint32_t LV_EVENT_KEYBOARD;
 
 
 
-void create_dashboard(lv_obj_t *scr);
-void create_note_info(lv_obj_t *scr);
+
 
 
 

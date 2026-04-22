@@ -290,11 +290,7 @@ void go_back_home(lv_event_t * e)
     lv_indev_set_group(lv_indev_get_next(NULL), Screen1group);
 }
 
-void go_back_app_store(lv_event_t * e)
-{
-	lv_disp_load_scr(ui_AppStore);
-    lv_indev_set_group(lv_indev_get_next(NULL), AppStoregroup);
-}
+
 
 
 
@@ -315,8 +311,6 @@ UI_DEFINE_UI_EVENT_FUN(ui_event_APPNote, app_note_switch)
 
 void app_launch(lv_event_t * e)
 {
-    // printf("app_launch\r\n");
-    // lv_disp_load_scr(ui_AppStore);
     cpp_app_launch();
 }
 
@@ -359,19 +353,7 @@ void main_key_switch(lv_event_t * e)
         }
     
 }
-void app_store_switch(lv_event_t * e)
-{
-    uint32_t key = lv_event_get_key(e);
-    printf("app_store_switch key: %d\n", key);
 
-    if (key == LV_KEY_ESC) {
-        /* ESC键返回主界面 */
-        go_back_home(e);
-        return;
-    }
-
-    app_store_key_handler(key);
-}
 void app_note_switch(lv_event_t * e)
 {
     uint32_t key = lv_event_get_key(e);
@@ -384,26 +366,4 @@ void app_note_switch(lv_event_t * e)
     }
 }
 
-// Declare external Python app key handler
-extern void app_python_handle_key(uint32_t key);
 
-void app_python_switch(lv_event_t * e)
-{
-    uint32_t key = lv_event_get_key(e);
-    printf("app_python_switch key: %d\n", key);
-
-    // 所有按键（含 ESC）均传递给终端处理
-    app_python_handle_key(key);
-}
-
-// Define the UI event handler for Python app
-void ui_event_pythonapp(lv_event_t * e) {
-    lv_event_code_t event_code = lv_event_get_code(e);
-    if(event_code == LV_EVENT_KEY) {
-        app_python_switch(e);
-    } else if (event_code == LV_EVENT_SCREEN_LOAD_START || event_code == LV_EVENT_SCREEN_UNLOAD_START) {
-        // Call the C++ event handler for screen load/unload
-        extern void ui_event_pythonapp_cpp(lv_event_t *e);
-        ui_event_pythonapp_cpp(e);
-    }
-}

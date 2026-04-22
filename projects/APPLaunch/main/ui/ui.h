@@ -42,15 +42,10 @@ void zuolabelout2zuo_Animation(lv_obj_t * TargetObject, int delay, ui_anim_ready
 void youlabel2zuo_Animation(lv_obj_t * TargetObject, int delay, ui_anim_ready_cb_t ready_cb);
 void switchlabel2zuo_Animation(lv_obj_t * TargetObject, int delay, ui_anim_ready_cb_t ready_cb);
 void zuolabel2zuo_Animation(lv_obj_t * TargetObject, int delay, ui_anim_ready_cb_t ready_cb);
-void create_dashboard(lv_obj_t *scr);
 // SCREEN: ui_Screen1
 
 void ui_Screen1_screen_init(void);
-void ui_AppStore_screen_init(void);
-void ui_APPNote_screen_init(void);
-void ui_AppStore1_screen_init(void);
 
-void ui_AppStore1_screen_init1(void);
 
 void launch_circle_init();
 void ui_info_bind();
@@ -75,7 +70,6 @@ void ui_info_bind();
 #define UI_DEFINE_UI_EVENT_FUN(event_fun, call_fun) void event_fun(lv_event_t * e);
 
 #include "ui_event_fun.h"
-void ui_event_app_card(lv_event_t * e);
 #undef UI_DEFINE_UI_EVENT_FUN
 
 
