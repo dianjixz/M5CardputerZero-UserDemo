@@ -100,10 +100,6 @@ scons -j$(nproc)
 # 方法1：通过 apt 安装
 sudo apt install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
-# 方法2：手动下载 Linaro 工具链
-wget https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/linaro/gcc-linaro-7.5.0-2019.12-x86_64_aarch64-linux-gnu.tar.xz
-sudo tar Jxvf gcc-linaro-7.5.0-2019.12-x86_64_aarch64-linux-gnu.tar.xz -C /opt
-export PATH="/opt/gcc-linaro-7.5.0-2019.12-x86_64_aarch64-linux-gnu/bin:$PATH"
 ```
 
 修改 `projects/UserDemo/SConstruct`，将 SDL2 后端切换为 Framebuffer 后端：
@@ -155,10 +151,7 @@ scons verbose
 
 ```bash
 cd projects/UserDemo
-# 可通过环境变量指定窗口分辨率（默认 320x170）
-export LV_SDL_VIDEO_WIDTH=320
-export LV_SDL_VIDEO_HEIGHT=170
-./build/M5CardputerZero-UserDemo
+./dist/M5CardputerZero-UserDemo
 ```
 
 ### M5Cardputer Zero 设备端
@@ -166,22 +159,22 @@ export LV_SDL_VIDEO_HEIGHT=170
 将编译产物推送到设备：
 
 ```bash
-scp projects/UserDemo/build/M5CardputerZero-UserDemo user@<device_ip>:/home/user/
+scp -r projects/UserDemo/dist user@<device_ip>:/home/user/
 ```
 
 在设备上运行（使用 Framebuffer）：
 
 ```bash
 # 自动检测 ST7789V Framebuffer 设备
-./M5CardputerZero-UserDemo
+./dist/M5CardputerZero-UserDemo
 
 # 或手动指定 Framebuffer 设备
 export LV_LINUX_FBDEV_DEVICE=/dev/fb0
-./M5CardputerZero-UserDemo
+./dist/M5CardputerZero-UserDemo
 
 # 指定键盘输入设备
 export LV_LINUX_KEYBOARD_DEVICE=/dev/input/by-path/platform-3f804000.i2c-event
-./M5CardputerZero-UserDemo
+./dist/M5CardputerZero-UserDemo
 ```
 
 ---

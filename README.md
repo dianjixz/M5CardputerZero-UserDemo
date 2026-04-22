@@ -90,7 +90,7 @@ cd projects/UserDemo
 scons -j$(nproc)
 ```
 
-The compiled binary will be located at `projects/UserDemo/build/M5CardputerZero-UserDemo`.
+The compiled binary will be located in the `projects/UserDemo/dist/` directory, named `M5CardputerZero-UserDemo`.
 
 ### Option 2: Cross-Compile for AArch64 (M5Cardputer Zero device)
 
@@ -100,10 +100,6 @@ Install the AArch64 cross-compilation toolchain:
 # Option A: via apt
 sudo apt install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
-# Option B: download Linaro toolchain manually
-wget https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/linaro/gcc-linaro-7.5.0-2019.12-x86_64_aarch64-linux-gnu.tar.xz
-sudo tar Jxvf gcc-linaro-7.5.0-2019.12-x86_64_aarch64-linux-gnu.tar.xz -C /opt
-export PATH="/opt/gcc-linaro-7.5.0-2019.12-x86_64_aarch64-linux-gnu/bin:$PATH"
 ```
 
 Edit `projects/UserDemo/SConstruct` to switch from SDL2 to Framebuffer backend:
@@ -111,15 +107,17 @@ Edit `projects/UserDemo/SConstruct` to switch from SDL2 to Framebuffer backend:
 ```python
 # Disable SDL2 — change "if True" to "if False":
 if False:   # <-- changed to False
-    ...
-    f.write('CONFIG_V9_5_LV_USE_SDL=y\n')
+    if not os.path.exists('build/config/config_tmp.mk'):
+        ...
+        f.write('CONFIG_V9_5_LV_USE_SDL=y\n')
 
 # Enable Framebuffer — change "if False" to "if True":
 if True:    # <-- changed to True
-    ...
-    f.write('CONFIG_V9_5_LV_USE_LINUX_FBDEV=y\n')
-    f.write('CONFIG_V9_5_LV_DRAW_SW_ASM_NEON=y\n')
-    f.write('CONFIG_TOOLCHAIN_PREFIX="aarch64-linux-gnu-"\n')
+    if not os.path.exists('build/config/config_tmp.mk'):
+        ...
+        f.write('CONFIG_V9_5_LV_USE_LINUX_FBDEV=y\n')
+        f.write('CONFIG_V9_5_LV_DRAW_SW_ASM_NEON=y\n')
+        f.write('CONFIG_TOOLCHAIN_PREFIX="aarch64-linux-gnu-"\n')
 ```
 
 Then build:
@@ -153,10 +151,7 @@ scons verbose
 
 ```bash
 cd projects/UserDemo
-# Optionally set window resolution (default: 320x170)
-export LV_SDL_VIDEO_WIDTH=320
-export LV_SDL_VIDEO_HEIGHT=170
-./build/M5CardputerZero-UserDemo
+./dist/M5CardputerZero-UserDemo
 ```
 
 ### M5Cardputer Zero Device
@@ -164,22 +159,22 @@ export LV_SDL_VIDEO_HEIGHT=170
 Copy the binary to the device:
 
 ```bash
-scp projects/UserDemo/build/M5CardputerZero-UserDemo user@<device_ip>:/home/user/
+scp -r projects/UserDemo/dist user@<device_ip>:/home/user/
 ```
 
 Run on the device (Framebuffer mode):
 
 ```bash
 # Auto-detect the ST7789V framebuffer device
-./M5CardputerZero-UserDemo
+./dist/M5CardputerZero-UserDemo
 
 # Or manually specify the framebuffer device
 export LV_LINUX_FBDEV_DEVICE=/dev/fb0
-./M5CardputerZero-UserDemo
+./dist/M5CardputerZero-UserDemo
 
 # Specify the keyboard input device
 export LV_LINUX_KEYBOARD_DEVICE=/dev/input/by-path/platform-3f804000.i2c-event
-./M5CardputerZero-UserDemo
+./dist/M5CardputerZero-UserDemo
 ```
 
 ---

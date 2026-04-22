@@ -3,3 +3,4 @@ dist
 .gdb_history
 ui.bak
 static
+static_lib

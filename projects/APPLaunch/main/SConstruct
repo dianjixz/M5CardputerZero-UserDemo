@@ -1,0 +1,60 @@
+import os
+
+Import('env')
+with open(env['PROJECT_TOOL_S']) as f:
+    exec(f.read())
+
+SRCS = Glob('src/*.c*')
+INCLUDE = [ADir('.'), ADir('include')]
+PRIVATE_INCLUDE = []
+REQUIREMENTS = ['lvgl_component', 'pthread', 'input', 'xkbcommon', 'udev']
+STATIC_LIB = []
+DYNAMIC_LIB = []
+DEFINITIONS = [] #'-std=c++20'
+DEFINITIONS_PRIVATE = []
+LDFLAGS = []
+LINK_SEARCH_PATH = []
+STATIC_FILES = []
+
+
+SRCS += append_srcs_dir(ADir('ui'))
+
+
+lvgl_component = list(filter(lambda x: x['target'] == 'lvgl_component', env['COMPONENTS']))[0]
+
+if 'CONFIG_V9_5_LV_USE_SDL' in os.environ:
+    lvgl_component['REQUIREMENTS'] += ['SDL2']
+    lvgl_component['INCLUDE'] += ['/usr/include/SDL2']
+    lvgl_component['DEFINITIONS'] += ['-D_REENTRANT']
+
+# # 添加 freetype 支持
+lvgl_component['REQUIREMENTS'] += ['freetype']
+lvgl_component['INCLUDE'] += ['/usr/include/freetype2', '/usr/include/libpng16']
+
+for src in lvgl_component['SRCS']:
+    if 'lv_sdl_keyboard.c' in str(src):
+        lvgl_component['SRCS'].remove(src)
+
+
+# screen_srcs = append_srcs_dir(ADir('ui/screens'))
+# for src in screen_srcs:
+#     os.system(f"sed -i 's/&ui_img_/ui_img_/g' {src}")
+#     os.system(f"sed -i 's/= lv_tabview_create(/= lv_tabview_create_compat(/g' {src}")
+
+
+STATIC_FILES += [ADir('ui/images')]
+
+env['COMPONENTS'].append({'target':'M5CardputerZero-UserDemo',
+                          'SRCS':SRCS,
+                          'INCLUDE':INCLUDE,
+                          'PRIVATE_INCLUDE':PRIVATE_INCLUDE,
+                          'REQUIREMENTS':REQUIREMENTS,
+                          'STATIC_LIB':STATIC_LIB,
+                          'DYNAMIC_LIB':DYNAMIC_LIB,
+                          'DEFINITIONS':DEFINITIONS,
+                          'DEFINITIONS_PRIVATE':DEFINITIONS_PRIVATE,
+                          'LDFLAGS':LDFLAGS,
+                          'LINK_SEARCH_PATH':LINK_SEARCH_PATH,
+                          'STATIC_FILES':STATIC_FILES,
+                          'REGISTER':'project'
+                          })
