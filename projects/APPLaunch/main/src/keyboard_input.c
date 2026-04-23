@@ -718,13 +718,13 @@ static void sdl_keyboard_read(lv_indev_t * indev, lv_indev_data_t * data)
 
 static void release_indev_cb(lv_event_t * e)
 {
-    lv_indev_t * indev = (lv_indev_t *)lv_event_get_user_data(e);
+    lv_indev_t * indev = (lv_indev_t *)lv_event_get_target(e);
+    if(indev == NULL) return;
+
     lv_sdl_keyboard_t * dev = lv_indev_get_driver_data(indev);
     if(dev) {
         lv_indev_set_driver_data(indev, NULL);
-        lv_indev_set_read_cb(indev, NULL);
         lv_free(dev);
-        LV_LOG_INFO("done");
     }
 }
 
