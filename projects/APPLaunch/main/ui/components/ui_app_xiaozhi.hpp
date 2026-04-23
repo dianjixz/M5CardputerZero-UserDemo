@@ -2,7 +2,10 @@
 
 #include "ui_app_page.hpp"
 #include "application.hpp"
+#include "audio_pipeline.hpp"
+#if defined(APPLAUNCH_USE_SDL_AUDIO)
 #include "audio_pipeline_sdl.hpp"
+#endif
 #include "config.hpp"
 #include "hal.hpp"
 #include "mac_text_renderer.hpp"
@@ -560,7 +563,11 @@ private:
         hal_ = hal.get();
         auto ui = std::make_unique<AppLaunchUi>(this);
         auto ws = std::make_unique<xiaozhi::WsClientBridge>();
+    #if defined(APPLAUNCH_USE_SDL_AUDIO)
         auto audio = std::make_unique<xiaozhi::AudioPipelineSdl>();
+    #else
+        auto audio = std::make_unique<xiaozhi::AudioPipelineStub>();
+    #endif
 
         auto app = std::make_unique<xiaozhi::Application>(
             std::move(cfg),

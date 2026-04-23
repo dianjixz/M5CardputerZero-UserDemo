@@ -40,11 +40,14 @@ if os.path.isdir(xiaozhi_main):
     INCLUDE.append(os.path.join(xiaozhi_main, 'include'))
     SRCS += [
         os.path.join(xiaozhi_main, 'src', 'application.cpp'),
+        os.path.join(xiaozhi_main, 'src', 'audio_pipeline.cpp'),
         os.path.join(xiaozhi_main, 'src', 'config.cpp'),
         os.path.join(xiaozhi_main, 'src', 'ota_client.cpp'),
         os.path.join(xiaozhi_main, 'src', 'ws_client.cpp'),
-        os.path.join(xiaozhi_main, 'src', 'audio_pipeline_sdl.cpp'),
     ]
+    if 'CONFIG_V9_5_LV_USE_SDL' in os.environ:
+        SRCS += [os.path.join(xiaozhi_main, 'src', 'audio_pipeline_sdl.cpp')]
+        DEFINITIONS += ['-DAPPLAUNCH_USE_SDL_AUDIO=1']
 
 
 lvgl_component = list(filter(lambda x: x['target'] == 'lvgl_component', env['COMPONENTS']))[0]
