@@ -19,7 +19,7 @@ lv_obj_t * ui_comp_get_child(lv_obj_t * comp, uint32_t child_idx)
     ui_comp_get_child_t info;
     info.child = NULL;
     info.child_idx = child_idx;
-    lv_event_send(comp, LV_EVENT_GET_COMP_CHILD, &info);
+    lv_obj_send_event(comp, LV_EVENT_GET_COMP_CHILD, &info);
     return info.child;
 }
 

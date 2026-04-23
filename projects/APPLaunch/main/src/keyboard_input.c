@@ -10,11 +10,6 @@
 #include <locale.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <sys/timerfd.h>
-#include <linux/input.h>
-#include <libinput.h>
-#include <xkbcommon/xkbcommon.h>
-#include <xkbcommon/xkbcommon-compose.h>
 #include "keyboard_input.h"
 #include "lvgl/lvgl.h"
 
@@ -26,6 +21,12 @@ pthread_mutex_t keyboard_mutex = PTHREAD_MUTEX_INITIALIZER;
 volatile int LVGL_HOME_KEY_FLAGE = 0;
 volatile int LVGL_RUN_FLAGE = 1;
 #if !LV_USE_SDL
+#include <sys/timerfd.h>
+#include <linux/input.h>
+#include <libinput.h>
+#include <xkbcommon/xkbcommon.h>
+#include <xkbcommon/xkbcommon-compose.h>
+
 /* ============================================================
  *  参数
  * ============================================================ */

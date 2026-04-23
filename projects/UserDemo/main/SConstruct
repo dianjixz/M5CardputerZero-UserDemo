@@ -28,7 +28,26 @@ lvgl_component = list(
 )[0]
 if "CONFIG_V9_5_LV_USE_SDL" in os.environ:
     lvgl_component["REQUIREMENTS"] += ["SDL2"]
-    lvgl_component["INCLUDE"] += ["/usr/include/SDL2"]
+    sdl_include_candidates = [
+        "/opt/homebrew/include",
+        "/usr/local/include",
+        "/usr/include",
+        "/opt/homebrew/include/SDL2",
+        "/usr/local/include/SDL2",
+        "/usr/include/SDL2",
+    ]
+    for include_dir in sdl_include_candidates:
+        if os.path.exists(include_dir):
+            lvgl_component["INCLUDE"].append(include_dir)
+
+    sdl_library_candidates = [
+        "/opt/homebrew/lib",
+        "/usr/local/lib",
+    ]
+    for library_dir in sdl_library_candidates:
+        if os.path.exists(library_dir):
+            lvgl_component["LINK_SEARCH_PATH"].append(library_dir)
+
     lvgl_component["DEFINITIONS"] += ["-D_REENTRANT"]
 
 

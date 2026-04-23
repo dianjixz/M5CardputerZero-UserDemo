@@ -7,7 +7,23 @@
 #include <stdlib.h>
 #include "ui/ui.h"
 #include "keyboard_input.h"
+#if defined(__linux__)
 #include <linux/input.h>
+#else
+#define KEY_ESC        1
+#define KEY_BACKSPACE  14
+#define KEY_TAB        15
+#define KEY_ENTER      28
+#define KEY_HOME      102
+#define KEY_UP        103
+#define KEY_PREVIOUS  104
+#define KEY_LEFT      105
+#define KEY_RIGHT     106
+#define KEY_END       107
+#define KEY_DOWN      108
+#define KEY_NEXT      109
+#define KEY_DELETE    111
+#endif
 #include <cstring>
 // #include "ui/inter_process_comms.h"
 

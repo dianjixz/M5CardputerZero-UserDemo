@@ -4,8 +4,6 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <fcntl.h>
-#include <linux/fb.h>
-#include <sys/ioctl.h>
 #include <unordered_map>
 #include <list>
 #include <memory>
@@ -16,6 +14,7 @@
 #include "ui_app_store.hpp"
 #include "ui_app_music.hpp"
 #include "ui_app_setup.hpp"
+#include "ui_app_xiaozhi.hpp"
 #include "ui_app_console.hpp"
 #include "ui_app_IpPanel.hpp"
 
@@ -89,6 +88,9 @@ public:
         app_list.emplace_back("MUSIC",
                               "A:/dist/images/MUSIC_logo.png", page_v<UIMusicPage>);
         app_list.emplace_back("AUDIO_PLAYER",
+        app_list.emplace_back("XIAOZHI",
+                              "A:/dist/images/CLI_logo.png", page_v<UIXiaoZhiPage>);
+        app_list.emplace_back("NIHAO",
                               "A:/dist/images/MUSIC_logo.png",
                               "tinyplay -D1 -d0 /home/pi/zhou.wav",
                               true);

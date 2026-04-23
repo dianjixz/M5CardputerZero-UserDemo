@@ -5,8 +5,6 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <fcntl.h>
-#include <linux/fb.h>
-#include <sys/ioctl.h>
 #include <unordered_map>
 #include <list>
 #include <memory>
@@ -14,9 +12,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <signal.h>
-#include <pty.h>
-#include <termios.h>
-#include <errno.h>
 #include <vector>
 #include <keyboard_input.h>
 #include <functional>
