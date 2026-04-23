@@ -23,6 +23,8 @@
  * ============================================================ */
 struct keyboard_queue_t keyboard_queue;
 pthread_mutex_t keyboard_mutex = PTHREAD_MUTEX_INITIALIZER;
+volatile int LVGL_HOME_KEY_FLAGE = 0;
+volatile int LVGL_RUN_FLAGE = 1;
 #if !LV_USE_SDL
 /* ============================================================
  *  参数
@@ -182,9 +184,23 @@ static void enqueue_key(const struct key_item *src) {
     if (!elm) return;
     *elm = *src;
     elm->flage = 0;  // 标记需要 free
-    pthread_mutex_lock(&keyboard_mutex);
-    STAILQ_INSERT_TAIL(&keyboard_queue, elm, entries);
-    pthread_mutex_unlock(&keyboard_mutex);
+
+
+    if(elm->key_code == KEY_ESC) {
+        LVGL_HOME_KEY_FLAGE = elm->key_state;
+    }
+
+    if(LVGL_RUN_FLAGE)
+    {
+        pthread_mutex_lock(&keyboard_mutex);
+        STAILQ_INSERT_TAIL(&keyboard_queue, elm, entries);
+        pthread_mutex_unlock(&keyboard_mutex);
+    }
+    else
+    {
+        free(elm);
+    }
+
 }
 
 /* ============================================================

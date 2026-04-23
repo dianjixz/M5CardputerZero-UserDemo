@@ -11,6 +11,7 @@
 #include <memory>
 #include <string>
 #include <functional>
+#include <chrono>
 #include "ui_launch_page.hpp"
 #include "ui_app_store.hpp"
 #include "ui_app_music.hpp"
@@ -87,6 +88,10 @@ public:
                               true);
         app_list.emplace_back("IP_PANEL",
                               "A:/dist/images/ssh.png", page_v<UIIpPanelPage>);
+
+        app_list.emplace_back("MATH",
+                              "A:/dist/images/math.png", 
+                              "/home/pi/M5CardputerZero-Calculator-linux-aarch64", false);
     }
 
     void launch_app()
@@ -128,7 +133,7 @@ public:
         printf("Launching external app: %s\n", exec.c_str());
         lv_disp_t *disp = lv_disp_get_default();
         lv_indev_t *indev = lv_indev_get_next(NULL);
-
+        LVGL_RUN_FLAGE = 0;
         if (indev)
             lv_indev_set_group(indev, NULL);
         lv_timer_enable(false);
@@ -143,14 +148,85 @@ public:
         }
         else if (pid > 0)
         {
+            pid_t pid_ret;
             int status;
-            waitpid(pid, &status, 0);
-            printf("App %s exited with status %d\n",
-                   exec.c_str(), WEXITSTATUS(status));
+            int end_status = 0;
+            std::chrono::time_point<std::chrono::steady_clock> start_time;
+            std::chrono::time_point<std::chrono::steady_clock> end_time;
+            int ctrl_c_count = 0;
+            for(;;)
+            {
+                if(end_status == 0)
+                {
+                    pid_ret = waitpid(pid, &status, WNOHANG);
+                    if (pid_ret > 0)
+                        break;
+                    usleep(100000); // 100ms
+                    if(LVGL_HOME_KEY_FLAGE)
+                    {
+                        end_status = 1;
+                        start_time = std::chrono::steady_clock::now();
+                    }
+                }
+                if(end_status == 1)
+                {
+                    if(LVGL_HOME_KEY_FLAGE)
+                    {
+                        end_time = std::chrono::steady_clock::now();
+                        if(std::chrono::duration_cast<std::chrono::seconds>(end_time - start_time).count() >= 5)
+                        {
+                            // kill(pid, SIGINT);
+                            end_status = 2;
+                        }
+                    }
+                    else
+                    {
+                        end_status = 0;
+                    }
+                }
+                if(end_status == 2)
+                {
+                    ctrl_c_count ++;
+                    kill(pid, SIGINT);
+                    usleep(100000); // 100ms
+                    pid_ret = waitpid(pid, &status, WNOHANG);
+                    if (pid_ret > 0)
+                        break;
+                    if(ctrl_c_count >= 30)
+                    {
+                        // kill(pid, SIGKILL);
+                        end_status = 3;
+                        ctrl_c_count = 0 ;
+                    }
+                }
+                if(end_status == 3)
+                {
+                    ctrl_c_count ++;
+                    kill(pid, SIGKILL);
+                    usleep(100000); // 100ms
+                    pid_ret = waitpid(pid, &status, WNOHANG);
+                    if (pid_ret > 0)
+                        break;
+                    if (pid_ret < 0)
+                        break;
+                    if(ctrl_c_count >= 300)
+                    {
+                        break;
+                    }
+                }
+            }
+            
+            // waitpid(pid, &status, 0);
+            if (WIFEXITED(status)) {
+                printf("App %s exited normally, code=%d\n", exec.c_str(), WEXITSTATUS(status));
+            } else if (WIFSIGNALED(status)) {
+                printf("App %s killed by signal %d\n", exec.c_str(), WTERMSIG(status));
+            }
             lv_timer_enable(true);
             if (indev)
-                lv_indev_set_group(lv_indev_get_next(NULL), Screen1group);
+                lv_indev_set_group(indev, Screen1group);
             lv_disp_load_scr(ui_Screen1);
+            lv_obj_invalidate(lv_screen_active());
             lv_refr_now(disp);
         }
         else
@@ -160,6 +236,7 @@ public:
             if (indev)
                 lv_indev_set_group(indev, lv_group_get_default());
         }
+        LVGL_RUN_FLAGE = 1;
     }
 
     void zuo(lv_obj_t *panel, lv_obj_t *label)

@@ -314,6 +314,37 @@ private:
     {
         auto self = (UIConsolePage *)lv_timer_get_user_data(t);
         if (self) self->vt100_cursor_blink_cb(t);
+
+        static int end_status = 0;
+        static std::chrono::time_point<std::chrono::steady_clock> start_time;
+        static std::chrono::time_point<std::chrono::steady_clock> end_time;
+        pid_t pid_ret;
+        if(end_status == 0)
+        {
+            if(LVGL_HOME_KEY_FLAGE)
+            {
+                end_status = 1;
+                start_time = std::chrono::steady_clock::now();
+            }
+        }
+        if(end_status == 1)
+        {
+            if(LVGL_HOME_KEY_FLAGE)
+            {
+                end_time = std::chrono::steady_clock::now();
+                if(std::chrono::duration_cast<std::chrono::seconds>(end_time - start_time).count() >= 5)
+                {
+                    end_status = 0;
+                    kill(self->child_pid, SIGKILL);
+                    // self->stop_pty();
+                    // self->terminal_active = false;
+                }
+            }
+            else
+            {
+                end_status = 0;
+            }
+        }
     }
 
     /* ================================================================== */
