@@ -12,6 +12,7 @@
 #include "lvgl/src/misc/cache/instance/lv_image_cache.h"
 
 #include <cstdio>
+#include <cctype>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -74,7 +75,10 @@ private:
         void renderState(xiaozhi::AppState state, const std::string& text, const std::string& emoji) override
         {
             if (owner_ != nullptr) {
-                owner_->apply_state(owner_->state_name(state), owner_->localize_detail(state, text), emoji.empty() ? owner_->state_emoji_text(state) : emoji);
+                owner_->apply_state(
+                    owner_->state_name(state),
+                    owner_->localize_detail(state, text),
+                    owner_->resolve_server_emoji(emoji, state));
             }
         }
 
@@ -190,7 +194,7 @@ private:
 
     void refresh_rendered_texts()
     {
-        update_rendered_text(title_slot_, "title", "小智助手");
+        update_rendered_text(title_slot_, "title", "xiaozhi");
         update_rendered_text(emoji_slot_, "emoji", emoji_);
         update_rendered_text(status_slot_, "status", status_);
         update_rendered_text(detail_slot_, "detail", detail_);
@@ -200,6 +204,17 @@ private:
 
     static const char *emoji_icon_path(const std::string &emoji_key)
     {
+        if (emoji_key == "😶") {
+            return "A:/dist/images/detail_info.png";
+        }
+        if (emoji_key == "🙂" || emoji_key == "😆" || emoji_key == "😂" || emoji_key == "😍" || emoji_key == "😳" ||
+            emoji_key == "😲" || emoji_key == "😉" || emoji_key == "😎" || emoji_key == "😌" || emoji_key == "🤤" ||
+            emoji_key == "😘" || emoji_key == "😏" || emoji_key == "😴" || emoji_key == "😜" || emoji_key == "😊") {
+            return "A:/dist/images/chat.png";
+        }
+        if (emoji_key == "😔" || emoji_key == "😠" || emoji_key == "😭" || emoji_key == "😱" || emoji_key == "🙄") {
+            return "A:/dist/images/setting.png";
+        }
         if (emoji_key == "🎙️" || emoji_key == "🎤" || emoji_key == "rec" || emoji_key == "listening") {
             return "A:/dist/images/rec.png";
         }
@@ -222,6 +237,51 @@ private:
             return "A:/dist/images/chat.png";
         }
         return "A:/dist/images/detail_info.png";
+    }
+
+    static std::string normalize_emotion_key(const std::string &value)
+    {
+        std::string key;
+        key.reserve(value.size());
+        for (char c : value) {
+            if (std::isspace(static_cast<unsigned char>(c)) != 0) {
+                continue;
+            }
+            key.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+        }
+        return key;
+    }
+
+    static std::string emotion_name_to_emoji(const std::string &value)
+    {
+        static const std::unordered_map<std::string, std::string> kEmotionToEmoji = {
+            {"neutral", "😶"}, {"happy", "🙂"}, {"laughing", "😆"}, {"funny", "😂"},
+            {"sad", "😔"}, {"angry", "😠"}, {"crying", "😭"}, {"loving", "😍"},
+            {"embarrassed", "😳"}, {"surprised", "😲"}, {"shocked", "😱"}, {"thinking", "🤔"},
+            {"winking", "😉"}, {"cool", "😎"}, {"relaxed", "😌"}, {"delicious", "🤤"},
+            {"kissy", "😘"}, {"confident", "😏"}, {"sleepy", "😴"}, {"silly", "😜"},
+            {"confused", "🙄"}, {"smile", "😊"},
+        };
+
+        const std::string key = normalize_emotion_key(value);
+        const auto it = kEmotionToEmoji.find(key);
+        if (it != kEmotionToEmoji.end()) {
+            return it->second;
+        }
+        return value;
+    }
+
+    std::string resolve_server_emoji(const std::string &value, xiaozhi::AppState state) const
+    {
+        if (value.empty()) {
+            return state_emoji_text(state);
+        }
+
+        const std::string mapped = emotion_name_to_emoji(value);
+        if (mapped.empty()) {
+            return state_emoji_text(state);
+        }
+        return mapped;
     }
 
     void creat_UI()
@@ -274,7 +334,7 @@ private:
         emoji_slot_.style = {255, 255, 255, 255, 34.0f, false, true, false};
     #else
         lv_obj_t *title = lv_label_create(title_bar);
-        lv_label_set_text(title, "小智助手");
+        lv_label_set_text(title, "xiaozhi");
         lv_obj_set_align(title, LV_ALIGN_LEFT_MID);
         lv_obj_set_x(title, kPad);
         lv_obj_set_style_text_color(title, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -364,7 +424,7 @@ private:
         case xiaozhi::AppState::Error:
             return "发生错误";
         }
-        return "小智助手";
+        return "xiaozhi";
     }
 
     static const char *state_emoji_text(xiaozhi::AppState state)
