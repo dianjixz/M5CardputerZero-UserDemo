@@ -5,6 +5,7 @@
 #include <list>
 #include <set>
 #include <iostream>
+#include <linux/input.h>
 struct store_app_info
 {
     std::string name;
@@ -474,10 +475,14 @@ private:
                 switch (key)
                 {
                 case LV_KEY_UP:
+                case 'f':
+                case KEY_F:
                     if (scroll)
                         lv_obj_scroll_by(scroll, 0, -20, LV_ANIM_ON);
                     break;
                 case LV_KEY_DOWN:
+                case 'x':
+                case KEY_X:
                     if (scroll)
                         lv_obj_scroll_by(scroll, 0, 20, LV_ANIM_ON);
                     break;
@@ -495,6 +500,7 @@ private:
             {
             case LV_KEY_UP:
             case 'f':
+            case KEY_F:
                 {
                     uint16_t sel = lv_roller_get_selected(ui_obj_["ui_roller"]);
                     if(sel > 0) {
@@ -507,6 +513,7 @@ private:
                 break;
             case LV_KEY_DOWN:
             case 'x':
+            case KEY_X:
                 {
                     uint16_t sel = lv_roller_get_selected(ui_obj_["ui_roller"]);
                     uint16_t cnt = (uint16_t)current_list.size(); // 以current_list大小为上界，防止越界
@@ -520,13 +527,15 @@ private:
                 break;
             case LV_KEY_LEFT:
             case 'z':
+            case KEY_Z:
                 switch_zuo();
                 break;
             case LV_KEY_RIGHT:
             case 'c':
+            case KEY_C:
                 switch_you();
                 break;
-            case 15:           /* Tab 键经 main.cpp 映射为 'i'，避免被 LVGL group 拦截 */
+            case KEY_TAB:           /* Tab 键经 main.cpp 映射为 'i'，避免被 LVGL group 拦截 */
                 if (!current_list.empty())
                     show_detail_panel();
                 break;

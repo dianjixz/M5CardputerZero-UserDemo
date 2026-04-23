@@ -1,7 +1,7 @@
 #include "ui.h"
 #include <stdio.h>
 #include <string.h>
-
+#include <linux/input.h>
 
 
 
@@ -323,33 +323,35 @@ void main_key_switch(lv_event_t * e)
     // if(event_code == LV_EVENT_KEY) {
         /* 获取按键值 */
         uint32_t key = lv_event_get_key(e);
-        
+        // printf("按下: %d\r\n", key);
         switch(key) {
             case LV_KEY_UP:
-                printf("按下: UP\r\n");
+                // printf("按下: UP\r\n");
                 break;
             case LV_KEY_DOWN:
-                printf("按下: DOWN\r\n");
+                // printf("按下: DOWN\r\n");
                 break;
             case LV_KEY_LEFT:
             case 'z':
-                printf("按下: LEFT\r\n");
+            case KEY_Z:
+                // printf("按下: LEFT\r\n");
                 switchyou(NULL);
                 break;
             case LV_KEY_RIGHT:
             case 'c':
-                printf("按下: RIGHT\r\n");
+            case KEY_C:
+                // printf("按下: RIGHT\r\n");
                 switchzuo(NULL);
                 break;
             case LV_KEY_ENTER:
-                printf("按下: ENTER\r\n");
+                // printf("按下: ENTER\r\n");
                 app_launch(NULL);
                 break;
             case LV_KEY_ESC:
-                printf("按下: ESC\r\n");
+                // printf("按下: ESC\r\n");
                 break;
             default:
-                printf("按下: %d\r\n", key);
+                // printf("按下: %d\r\n", key);
                 break;
         }
     
