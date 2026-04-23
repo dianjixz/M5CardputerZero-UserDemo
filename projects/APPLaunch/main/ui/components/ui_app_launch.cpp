@@ -21,6 +21,41 @@
 // 前向声明
 class app_launch_S;
 
+static lv_obj_t *ensure_panel_icon(lv_obj_t *panel)
+{
+    if (panel == NULL) {
+        return NULL;
+    }
+
+    lv_obj_t *child = lv_obj_get_child(panel, 0);
+    if (child == NULL) {
+        child = lv_img_create(panel);
+        lv_obj_center(child);
+        lv_obj_clear_flag(child, (lv_obj_flag_t)(LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE));
+    }
+
+    return child;
+}
+
+static void set_panel_icon(lv_obj_t *panel, const char *icon)
+{
+    if (panel == NULL) {
+        return;
+    }
+
+    lv_obj_set_style_bg_img_src(panel, icon, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_image_opa(panel, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    lv_obj_t *img = ensure_panel_icon(panel);
+    if (img == NULL) {
+        return;
+    }
+
+    lv_img_set_src(img, icon);
+    lv_obj_set_style_img_opa(img, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_center(img);
+}
+
 // ============================================================
 // 类型标签
 // ============================================================
@@ -96,10 +131,15 @@ public:
                               true);
         app_list.emplace_back("IP_PANEL",
                               "A:/dist/images/ssh.png", page_v<UIIpPanelPage>);
-
         app_list.emplace_back("MATH",
                               "A:/dist/images/math.png", 
                               "/home/pi/M5CardputerZero-Calculator-linux-aarch64", false);
+
+        set_panel_icon(ui_outPanelzuo, "A:/dist/images/PYTHON_logo.png");
+        set_panel_icon(ui_zuoPanel, "A:/dist/images/Store_logo.png");
+        set_panel_icon(ui_switchPanel, "A:/dist/images/CLI_logo.png");
+        set_panel_icon(ui_youPanel, "A:/dist/images/CLAW_logo.png");
+        set_panel_icon(ui_outPanelyou, "A:/dist/images/SETTING_logo.png");
     }
 
     void launch_app()
@@ -256,8 +296,7 @@ public:
         next_app = next_app == (int)app_list.size() - 1 ? 0 : next_app + 1;
         auto it = std::next(app_list.begin(), next_app);
         lv_label_set_text(label, it->Name.c_str());
-        lv_obj_set_style_bg_img_src(panel, it->Icon.c_str(),
-                                    LV_PART_MAIN | LV_STATE_DEFAULT);
+        set_panel_icon(panel, it->Icon.c_str());
     }
 
     void you(lv_obj_t *panel, lv_obj_t *label)
@@ -268,8 +307,7 @@ public:
         next_app = next_app == 0 ? (int)app_list.size() - 1 : next_app - 1;
         auto it = std::next(app_list.begin(), next_app);
         lv_label_set_text(label, it->Name.c_str());
-        lv_obj_set_style_bg_img_src(panel, it->Icon.c_str(),
-                                    LV_PART_MAIN | LV_STATE_DEFAULT);
+        set_panel_icon(panel, it->Icon.c_str());
     }
 
     ~app_launch_S() {}

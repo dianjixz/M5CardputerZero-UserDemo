@@ -5,6 +5,7 @@
 #include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <limits.h>
 #include "ui/ui.h"
 #include "keyboard_input.h"
 #if defined(__linux__)
@@ -26,6 +27,56 @@
 #endif
 #include <cstring>
 // #include "ui/inter_process_comms.h"
+
+static bool path_exists(const char *path)
+{
+    return access(path, F_OK) == 0;
+}
+
+static void ensure_project_workdir(const char *argv0)
+{
+    if (path_exists("./dist/images")) {
+        return;
+    }
+
+    if (argv0 == NULL || argv0[0] == '\0') {
+        return;
+    }
+
+    char exe_path[PATH_MAX] = {0};
+    if (realpath(argv0, exe_path) == NULL) {
+        return;
+    }
+
+    char *last_slash = strrchr(exe_path, '/');
+    if (last_slash == NULL) {
+        return;
+    }
+    *last_slash = '\0';
+
+    char candidate_root[PATH_MAX] = {0};
+    if (snprintf(candidate_root, sizeof(candidate_root), "%s/..", exe_path) >= (int)sizeof(candidate_root)) {
+        return;
+    }
+
+    char normalized_root[PATH_MAX] = {0};
+    if (realpath(candidate_root, normalized_root) == NULL) {
+        return;
+    }
+
+    char images_path[PATH_MAX] = {0};
+    if (snprintf(images_path, sizeof(images_path), "%s/dist/images", normalized_root) >= (int)sizeof(images_path)) {
+        return;
+    }
+
+    if (!path_exists(images_path)) {
+        return;
+    }
+
+    if (chdir(normalized_root) == 0) {
+        printf("Changed working directory to: %s\n", normalized_root);
+    }
+}
 
 
 
@@ -238,8 +289,10 @@ static void lv_linux_indev_init(void)
 #endif
 
 
-int main(void)
+int main(int argc, char **argv)
 {
+    (void)argc;
+    ensure_project_workdir(argv != NULL ? argv[0] : NULL);
 
     lv_init();
 
