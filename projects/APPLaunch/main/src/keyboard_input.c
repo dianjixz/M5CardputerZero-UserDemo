@@ -185,23 +185,9 @@ static void enqueue_key(const struct key_item *src) {
     if (!elm) return;
     *elm = *src;
     elm->flage = 0;  // 标记需要 free
-
-
-    if(elm->key_code == KEY_ESC) {
-        LVGL_HOME_KEY_FLAGE = elm->key_state;
-    }
-
-    if(LVGL_RUN_FLAGE)
-    {
-        pthread_mutex_lock(&keyboard_mutex);
-        STAILQ_INSERT_TAIL(&keyboard_queue, elm, entries);
-        pthread_mutex_unlock(&keyboard_mutex);
-    }
-    else
-    {
-        free(elm);
-    }
-
+    pthread_mutex_lock(&keyboard_mutex);
+    STAILQ_INSERT_TAIL(&keyboard_queue, elm, entries);
+    pthread_mutex_unlock(&keyboard_mutex);
 }
 
 /* ============================================================
@@ -749,6 +735,7 @@ void lv_sdl_keyboard_handler(SDL_Event * event)
     if(indev == NULL) return;
 
     lv_sdl_keyboard_t * dsc = lv_indev_get_driver_data(indev);
+    if(dsc == NULL) return;
 
     switch(event->type) {
         case SDL_KEYDOWN: {

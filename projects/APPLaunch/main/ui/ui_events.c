@@ -328,10 +328,14 @@ static bool launcher_key_event_ready(lv_event_t *e)
     if (code == LV_EVENT_KEY) {
         return true;
     }
+#if LV_USE_SDL
+    return false;
+#else
     if (code == LV_EVENT_KEYBOARD) {
         return LV_EVENT_KEYBOARD_GET_KEY_STATE(e) == 0;
     }
     return false;
+#endif
 }
 
 static uint32_t launcher_get_key(lv_event_t *e)

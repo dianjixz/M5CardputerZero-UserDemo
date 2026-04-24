@@ -299,7 +299,9 @@ private:
     void creat_input_group()
     {
         key_group = lv_group_create();
+        lv_obj_add_flag(ui_root, LV_OBJ_FLAG_CLICK_FOCUSABLE);
         lv_group_add_obj(key_group, ui_root);
+        lv_group_focus_obj(ui_root);
     }
 
     // static void static_event_handler(lv_event_t * e)

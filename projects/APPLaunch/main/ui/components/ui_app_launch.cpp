@@ -93,6 +93,7 @@ public:
     void launch_app()
     {
         auto it = std::next(app_list.begin(), current_app);
+        printf("Launching app: %s\n", it->Name.c_str());
         it->launch(this);
     }
 
@@ -120,6 +121,7 @@ public:
         app_Page = p;
         lv_disp_load_scr(p->get_ui());
         lv_indev_set_group(lv_indev_get_next(NULL), p->get_key_group());
+        lv_group_focus_obj(p->get_ui());
         p->go_back_home = std::bind(&app_launch_S::go_back_home, this);
         p->exec(exec);
     }
@@ -221,6 +223,7 @@ app::app(std::string name,
         lv_disp_load_scr(p->get_ui());
         lv_indev_set_group(lv_indev_get_next(NULL),
                            p->get_key_group());
+        lv_group_focus_obj(p->get_ui());
         p->go_back_home =
             std::bind(&app_launch_S::go_back_home, self);
     };
