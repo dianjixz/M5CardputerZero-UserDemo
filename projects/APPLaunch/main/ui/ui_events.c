@@ -1,7 +1,34 @@
 #include "ui.h"
 #include <stdio.h>
 #include <string.h>
+#if defined(__linux__)
 #include <linux/input.h>
+#else
+#ifndef KEY_UP
+#define KEY_UP 103
+#endif
+#ifndef KEY_DOWN
+#define KEY_DOWN 108
+#endif
+#ifndef KEY_LEFT
+#define KEY_LEFT 105
+#endif
+#ifndef KEY_RIGHT
+#define KEY_RIGHT 106
+#endif
+#ifndef KEY_ENTER
+#define KEY_ENTER 28
+#endif
+#ifndef KEY_ESC
+#define KEY_ESC 1
+#endif
+#ifndef KEY_Z
+#define KEY_Z 44
+#endif
+#ifndef KEY_C
+#define KEY_C 46
+#endif
+#endif
 
 
 
@@ -295,8 +322,28 @@ void go_back_home(lv_event_t * e)
 
 
 
+static bool launcher_key_event_ready(lv_event_t *e)
+{
+    const lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_KEY) {
+        return true;
+    }
+    if (code == LV_EVENT_KEYBOARD) {
+        return LV_EVENT_KEYBOARD_GET_KEY_STATE(e) == 0;
+    }
+    return false;
+}
+
+static uint32_t launcher_get_key(lv_event_t *e)
+{
+    if (lv_event_get_code(e) == LV_EVENT_KEY) {
+        return lv_event_get_key(e);
+    }
+    return LV_EVENT_KEYBOARD_GET_KEY(e);
+}
+
 #define UI_DEFINE_UI_EVENT_FUN(event_fun, call_fun) void event_fun(lv_event_t * e) { \
-    if(IS_KEY_RELEASED(e)) { \
+    if(launcher_key_event_ready(e)) { \
         call_fun(e); \
     } \
 }
@@ -305,51 +352,43 @@ UI_DEFINE_UI_EVENT_FUN(ui_event_Screen1, main_key_switch)
 
 #undef UI_DEFINE_UI_EVENT_FUN
 
-
 void app_launch(lv_event_t * e)
 {
     cpp_app_launch();
 }
 
-
-
 void main_key_switch(lv_event_t * e)
 {
-    // lv_event_code_t event_code = lv_event_get_code(e);
-    
-    // if(IS_KEY_RELEASED(e)) {
-        /* 获取按键值 */
-        uint32_t key = LV_EVENT_KEYBOARD_GET_KEY(e);
-        printf("按下: %d\r\n", key);
-        switch(key) {
-            case KEY_UP:
-                // printf("按下: UP\r\n");
-                break;
-            case KEY_DOWN:
-                // printf("按下: DOWN\r\n");
-                break;
-            case KEY_LEFT:
-            case KEY_Z:
-                // printf("按下: LEFT\r\n");
-                switchyou(NULL);
-                break;
-            case KEY_RIGHT:
-            case KEY_C:
-                // printf("按下: RIGHT\r\n");
-                switchzuo(NULL);
-                break;
-            case KEY_ENTER:
-                printf("按下: ENTER\r\n");
-                app_launch(NULL);
-                break;
-            case KEY_ESC:
-                // printf("按下: ESC\r\n");
-                break;
-            default:
-                // printf("按下: %d\r\n", key);
-                break;
-        }
-    // }
+    uint32_t key = launcher_get_key(e);
+    printf("按下: %d\r\n", key);
+    switch(key) {
+        case KEY_UP:
+        case LV_KEY_UP:
+            break;
+        case KEY_DOWN:
+        case LV_KEY_DOWN:
+            break;
+        case KEY_LEFT:
+        case LV_KEY_LEFT:
+        case KEY_Z:
+            switchyou(NULL);
+            break;
+        case KEY_RIGHT:
+        case LV_KEY_RIGHT:
+        case KEY_C:
+            switchzuo(NULL);
+            break;
+        case KEY_ENTER:
+        case LV_KEY_ENTER:
+            printf("按下: ENTER\r\n");
+            app_launch(NULL);
+            break;
+        case KEY_ESC:
+        case LV_KEY_ESC:
+            break;
+        default:
+            break;
+    }
 }
 
 
