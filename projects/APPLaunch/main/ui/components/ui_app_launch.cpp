@@ -18,6 +18,7 @@
 #include "ui_app_setup.hpp"
 #include "ui_app_console.hpp"
 #include "ui_app_IpPanel.hpp"
+#include "ui_app_stock.hpp"
 
 // 前向声明
 class app_launch_S;
@@ -68,7 +69,7 @@ class app_launch_S
 {
 private:
     std::list<app> app_list;
-    int current_app = 0;
+    int current_app = 2;
 
 public:
     std::shared_ptr<void> app_Page;
@@ -76,6 +77,7 @@ public:
 public:
     app_launch_S()
     {
+        // 固定图标，不允许用户修改
         app_list.emplace_back("Python",
                               "A:/dist/images/PYTHON_logo.png", "python3", true, false);
         app_list.emplace_back("STORE",
@@ -86,6 +88,9 @@ public:
                               "A:/dist/images/CLAW_logo.png", "/home/pi/zeroclaw agent", true);
         app_list.emplace_back("SETTING",
                               "A:/dist/images/SETTING_logo.png", page_v<UISetupPage>);
+
+
+        // 动态图标，允许用户自定义
         app_list.emplace_back("MUSIC",
                               "A:/dist/images/MUSIC_logo.png", page_v<UIMusicPage>);
         app_list.emplace_back("AUDIO_PLAYER",
@@ -98,6 +103,14 @@ public:
         app_list.emplace_back("MATH",
                               "A:/dist/images/math.png", 
                               "/home/pi/M5CardputerZero-Calculator-linux-aarch64", false);
+
+
+        app_list.emplace_back("STOCKS",
+                              "A:/dist/images/stocks_macos_bigsur_icon_189691.png", page_v<UIStockPage>);
+
+
+
+                              
     }
 
     void launch_app()

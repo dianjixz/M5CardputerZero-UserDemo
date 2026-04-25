@@ -26,7 +26,10 @@
 //  屏幕分辨率: 320 x 170  (顶栏20px, ui_APP_Container 320x150)
 //
 //  功能:
-//    - VT100/ANSI 终端仿真（支持 CSI 光标移动、清屏、擦除等）
+//    - 完整 VT100/ANSI 终端仿真（移植自 src/vt100.c 状态机）
+//      支持: 光标移动, 擦除, SGR属性, 插入/删除行/字符,
+//            DEC 私有模式 (DECTCEM, DECAWM, DECSCNM等),
+//            SCP/RCP 光标保存恢复, 滚动区域, 设备属性等
 //    - PTY 子进程管理（fork + openpty）
 //    - 行级脏标记渲染，减少 LVGL 刷新开销
 //    - 光标闪烁（500ms 定时器）
@@ -107,8 +110,22 @@ public:
         terminal_active = true;
         vt100_cur_row = 0;
         vt100_cur_col = 0;
-        vt100_esc_state = VT100_ESC_NORMAL;
+        vt100_cur_attr = 0;
+        vt100_cur_fg = 7;
+        vt100_cur_bg = 0;
+        vt100_saved_row = 0; vt100_saved_col = 0;
+        vt100_saved_attr = 0; vt100_saved_fg = 7; vt100_saved_bg = 0;
+        vt100_auto_wrap = true;
+        vt100_cursor_visible_flag = true;
+        vt100_decckm = false;
+        vt100_esc_state = VT100_ST_NORMAL;
         vt100_esc_len = 0;
+        vt100_param_count = 0;
+        vt100_param_val = 0;
+        vt100_priv_mode = false;
+        vt100_sec_mode = false;
+        vt100_skip_until_st = false;
+        memset(vt100_params, 0, sizeof(vt100_params));
         waiting_key_to_exit = false;
 
         vt100_screen_clear_all();
@@ -155,20 +172,53 @@ private:
     /*  VT100 字符网格状态                                                  */
     /* ================================================================== */
     char vt100_screen[ROWS][COLS] = {};
+
+    /* 光标 */
     int vt100_cur_row = 0;
     int vt100_cur_col = 0;
 
-    enum vt100_EscState
-    {
-        VT100_ESC_NORMAL,
-        VT100_ESC_ESC,
-        VT100_ESC_CSI,
-        VT100_ESC_OSC
+    /* SGR 当前属性 (解析追踪，渲染仍为单色) */
+    int vt100_cur_attr = 0;   /* ATTR_BOLD=1, ATTR_UNDERLINE=2, ATTR_BLINK=4, ATTR_REVERSE=8 */
+    int vt100_cur_fg = 7;     /* ANSI 8色: 0-7, COLOR_DEFAULT=9 */
+    int vt100_cur_bg = 0;
+
+    /* 光标保存/恢复 (SCP/RCP, DECSC/DECRC) */
+    int vt100_saved_row = 0, vt100_saved_col = 0;
+    int vt100_saved_attr = 0, vt100_saved_fg = 7, vt100_saved_bg = 0;
+
+    /* DECAWM — 自动换行 */
+    bool vt100_auto_wrap = true;
+
+    /* DECTCEM — 光标显隐 */
+    bool vt100_cursor_visible_flag = true;
+
+    /* DECCKM — 应用光标键模式 (affects what sequence keyboard sends) */
+    bool vt100_decckm = false;
+
+    /* ── 完整 VT100 状态机 ─────────────────────────────────── */
+    enum vt_state {
+        VT100_ST_NORMAL,    /* 打印字符 */
+        VT100_ST_ESC,       /* 收到 ESC */
+        VT100_ST_CSI,       /* ESC [ — 收集参数 */
+        VT100_ST_CSI_QM,    /* ESC [? — DEC 私有模式 */
+        VT100_ST_CSI_GT,    /* ESC [> — Secondary DA / xterm 扩展 */
+        VT100_ST_OSC,       /* ESC ] — 操作系统命令 */
+        VT100_ST_DCS,       /* ESC P — 设备控制字符串 */
     };
-    vt100_EscState vt100_esc_state = VT100_ESC_NORMAL;
+    vt_state vt100_esc_state = VT100_ST_NORMAL;
     char vt100_esc_buf[64] = {};
     int vt100_esc_len = 0;
 
+    /* CSI 参数 */
+    static constexpr int VT100_MAX_PARAMS = 16;
+    int vt100_params[VT100_MAX_PARAMS] = {};
+    int vt100_param_count = 0;
+    int vt100_param_val = 0;
+    bool vt100_priv_mode = false;
+    bool vt100_sec_mode = false;
+    bool vt100_skip_until_st = false;
+
+    /* ── PTY ──────────────────────────────────────────────── */
     int pty_master = -1;
     pid_t child_pid = -1;
 
@@ -187,6 +237,7 @@ private:
         memset(row_rendered, 0, sizeof(row_rendered));
         memset(row_labels, 0, sizeof(row_labels));
         memset(vt100_esc_buf, 0, sizeof(vt100_esc_buf));
+        memset(vt100_params, 0, sizeof(vt100_params));
     }
 
     /* ================================================================== */
@@ -342,6 +393,26 @@ private:
     }
 
     /* ================================================================== */
+    /*  VT100 辅助函数                                                      */
+    /* ================================================================== */
+
+    static int clamp(int v, int lo, int hi)
+    {
+        if (v < lo) return lo;
+        if (v > hi) return hi;
+        return v;
+    }
+
+    /** defparam: 缺省参数或显式0均返回默认值。
+     *  idx >= param_count → 参数缺失 → dfl
+     *  params[idx] == 0 → 显式0或缺失 → dfl
+     */
+    int defparam(int idx, int dfl)
+    {
+        return (idx >= vt100_param_count || vt100_params[idx] == 0) ? dfl : vt100_params[idx];
+    }
+
+    /* ================================================================== */
     /*  字符网格操作                                                        */
     /* ================================================================== */
     void vt100_screen_clear_all()
@@ -352,22 +423,97 @@ private:
 
     void vt100_clear_row_from(int row, int from_col)
     {
-        if (row < 0 || row >= ROWS)
-            return;
-        if (from_col < 0)
-            from_col = 0;
-        if (from_col >= COLS)
-            return;
+        if (row < 0 || row >= ROWS) return;
+        if (from_col < 0) from_col = 0;
+        if (from_col >= COLS) return;
         memset(&vt100_screen[row][from_col], ' ', COLS - from_col);
     }
 
-    void vt100_scroll_up()
+    void vt100_scroll_up(int top, int bot, int n)
     {
-        for (int r = 0; r < ROWS - 1; r++)
-            memcpy(vt100_screen[r], vt100_screen[r + 1], COLS);
-        vt100_clear_row_from(ROWS - 1, 0);
+        if (top < 0) top = 0;
+        if (bot >= ROWS) bot = ROWS - 1;
+        if (n <= 0 || n > bot - top + 1) return;
+        for (int r = top; r <= bot - n; r++)
+            memcpy(vt100_screen[r], vt100_screen[r + n], COLS);
+        for (int r = bot - n + 1; r <= bot; r++)
+            memset(vt100_screen[r], ' ', COLS);
     }
 
+    void vt100_scroll_down(int top, int bot, int n)
+    {
+        if (top < 0) top = 0;
+        if (bot >= ROWS) bot = ROWS - 1;
+        if (n <= 0 || n > bot - top + 1) return;
+        for (int r = bot; r >= top + n; r--)
+            memcpy(vt100_screen[r], vt100_screen[r - n], COLS);
+        for (int r = top; r < top + n; r++)
+            memset(vt100_screen[r], ' ', COLS);
+    }
+
+    void vt100_erase_display(int mode)
+    {
+        if (mode == 0) {
+            vt100_clear_row_from(vt100_cur_row, vt100_cur_col);
+            for (int r = vt100_cur_row + 1; r < ROWS; r++)
+                vt100_clear_row_from(r, 0);
+        } else if (mode == 1) {
+            for (int r = 0; r < vt100_cur_row; r++)
+                vt100_clear_row_from(r, 0);
+            for (int c = 0; c <= vt100_cur_col && c < COLS; c++)
+                vt100_screen[vt100_cur_row][c] = ' ';
+        } else {
+            vt100_screen_clear_all();
+        }
+    }
+
+    void vt100_erase_line(int mode)
+    {
+        int start, end;
+        if (mode == 0) {
+            start = vt100_cur_col; end = COLS - 1;
+        } else if (mode == 1) {
+            start = 0; end = vt100_cur_col;
+        } else {
+            start = 0; end = COLS - 1;
+        }
+        for (int c = start; c <= end && c < COLS; c++)
+            vt100_screen[vt100_cur_row][c] = ' ';
+    }
+
+    void vt100_insert_lines(int n)
+    {
+        if (n < 1) n = 1;
+        vt100_scroll_down(vt100_cur_row, ROWS - 1, n);
+    }
+
+    void vt100_delete_lines(int n)
+    {
+        if (n < 1) n = 1;
+        vt100_scroll_up(vt100_cur_row, ROWS - 1, n);
+    }
+
+    void vt100_insert_chars(int n)
+    {
+        if (n < 1) n = 1;
+        for (int i = COLS - 1; i >= vt100_cur_col + n; i--)
+            vt100_screen[vt100_cur_row][i] = vt100_screen[vt100_cur_row][i - n];
+        for (int i = 0; i < n && vt100_cur_col + i < COLS; i++)
+            vt100_screen[vt100_cur_row][vt100_cur_col + i] = ' ';
+    }
+
+    void vt100_delete_chars(int n)
+    {
+        if (n < 1) n = 1;
+        for (int i = vt100_cur_col; i < COLS - n; i++)
+            vt100_screen[vt100_cur_row][i] = vt100_screen[vt100_cur_row][i + n];
+        for (int i = COLS - n; i < COLS; i++)
+            vt100_screen[vt100_cur_row][i] = ' ';
+    }
+
+    /* ================================================================== */
+    /*  字符输出 (含 DECAWM 自动换行)                                       */
+    /* ================================================================== */
     void vt100_put_char(char ch)
     {
         if (ch == '\r')
@@ -380,7 +526,7 @@ private:
             vt100_cur_col = 0;
             if (++vt100_cur_row >= ROWS)
             {
-                vt100_scroll_up();
+                vt100_scroll_up(0, ROWS - 1, 1);
                 vt100_cur_row = ROWS - 1;
             }
             return;
@@ -393,114 +539,101 @@ private:
         }
         if (ch == '\t')
         {
-            int next_tab = (vt100_cur_col / 4 + 1) * 4;
-            if (next_tab > COLS)
-                next_tab = COLS;
+            int next_tab = (vt100_cur_col / 8 + 1) * 8;
+            if (next_tab >= COLS) next_tab = COLS - 1;
             while (vt100_cur_col < next_tab)
                 vt100_put_char(' ');
             return;
         }
-        if ((unsigned char)ch < 32)
+        /* C0 controls (0x00-0x1F) — 忽略 */
+        if ((unsigned char)ch < 0x20)
+            return;
+        /* DEL (0x7F) */
+        if ((unsigned char)ch == 0x7F)
             return;
 
+        /* ── DECAWM 自动换行检查 ── */
         if (vt100_cur_col >= COLS)
         {
-            vt100_cur_col = 0;
-            if (++vt100_cur_row >= ROWS)
+            if (vt100_auto_wrap)
             {
-                vt100_scroll_up();
-                vt100_cur_row = ROWS - 1;
+                vt100_cur_col = 0;
+                if (++vt100_cur_row >= ROWS)
+                {
+                    vt100_scroll_up(0, ROWS - 1, 1);
+                    vt100_cur_row = ROWS - 1;
+                }
+            }
+            else
+            {
+                vt100_cur_col = COLS - 1;  /* 覆盖最后一列 */
             }
         }
         vt100_screen[vt100_cur_row][vt100_cur_col++] = ch;
     }
 
     /* ================================================================== */
-    /*  VT100 CSI 序列处理                                                  */
+    /*  ESC 序列处理 (非 CSI)                                               */
     /* ================================================================== */
-    void vt100_handle_csi(const char *seq, int len)
+    void vt100_handle_esc(char c)
     {
-        if (len == 0)
-            return;
-        char final = seq[len - 1];
-
-        int params[8] = {0};
-        int np = 0, cur_num = 0;
-        bool has_num = false;
-        for (int i = 0; i < len - 1 && np < 8; i++)
-        {
-            if (seq[i] >= '0' && seq[i] <= '9')
-            {
-                cur_num = cur_num * 10 + (seq[i] - '0');
-                has_num = true;
-            }
-            else if (seq[i] == ';')
-            {
-                params[np++] = cur_num;
-                cur_num = 0;
-                has_num = false;
-            }
-        }
-        if (has_num)
-            params[np++] = cur_num;
-        int p0 = (np >= 1) ? params[0] : 0;
-        int p1 = (np >= 2) ? params[1] : 0;
-
-        switch (final)
-        {
-        case 'A':
-            vt100_cur_row -= (p0 ? p0 : 1);
-            if (vt100_cur_row < 0)
-                vt100_cur_row = 0;
+        switch (c) {
+        case 'D':  /* IND — Index: 光标下移，必要时滚屏 */
+            if (vt100_cur_row == ROWS - 1)
+                vt100_scroll_up(0, ROWS - 1, 1);
+            else
+                vt100_cur_row++;
             break;
-        case 'B':
-            vt100_cur_row += (p0 ? p0 : 1);
-            if (vt100_cur_row >= ROWS)
-                vt100_cur_row = ROWS - 1;
+        case 'M':  /* RI — Reverse Index: 光标上移 */
+            if (vt100_cur_row == 0)
+                vt100_scroll_down(0, ROWS - 1, 1);
+            else
+                vt100_cur_row--;
             break;
-        case 'C':
-            vt100_cur_col += (p0 ? p0 : 1);
-            if (vt100_cur_col >= COLS)
-                vt100_cur_col = COLS - 1;
+        case 'E':  /* NEL — Next Line */
+            vt100_cur_col = 0;
+            if (vt100_cur_row == ROWS - 1)
+                vt100_scroll_up(0, ROWS - 1, 1);
+            else
+                vt100_cur_row++;
             break;
-        case 'D':
-            vt100_cur_col -= (p0 ? p0 : 1);
-            if (vt100_cur_col < 0)
-                vt100_cur_col = 0;
+        case 'H':  /* HTS — Horizontal Tab Set (acknowledge) */
             break;
-        case 'H':
-        case 'f':
-            vt100_cur_row = (p0 > 0 ? p0 - 1 : 0);
-            vt100_cur_col = (p1 > 0 ? p1 - 1 : 0);
-            if (vt100_cur_row >= ROWS)
-                vt100_cur_row = ROWS - 1;
-            if (vt100_cur_col >= COLS)
-                vt100_cur_col = COLS - 1;
+        case '7':  /* DECSC — Save Cursor */
+            vt100_saved_row  = vt100_cur_row;
+            vt100_saved_col  = vt100_cur_col;
+            vt100_saved_attr = vt100_cur_attr;
+            vt100_saved_fg   = vt100_cur_fg;
+            vt100_saved_bg   = vt100_cur_bg;
             break;
-        case 'J':
-            if (p0 == 2 || p0 == 3)
-            {
-                vt100_screen_clear_all();
-                vt100_cur_row = 0;
-                vt100_cur_col = 0;
-            }
-            else if (p0 == 0)
-            {
-                vt100_clear_row_from(vt100_cur_row, vt100_cur_col);
-                for (int r = vt100_cur_row + 1; r < ROWS; r++)
-                    vt100_clear_row_from(r, 0);
-            }
+        case '8':  /* DECRC — Restore Cursor */
+            vt100_cur_row  = clamp(vt100_saved_row, 0, ROWS - 1);
+            vt100_cur_col  = clamp(vt100_saved_col, 0, COLS - 1);
+            vt100_cur_attr = vt100_saved_attr;
+            vt100_cur_fg   = vt100_saved_fg;
+            vt100_cur_bg   = vt100_saved_bg;
             break;
-        case 'K':
-            if (p0 == 0)
-                vt100_clear_row_from(vt100_cur_row, vt100_cur_col);
-            else if (p0 == 1)
-            {
-                for (int c = 0; c <= vt100_cur_col && c < COLS; c++)
-                    vt100_screen[vt100_cur_row][c] = ' ';
-            }
-            else if (p0 == 2)
-                vt100_clear_row_from(vt100_cur_row, 0);
+        case 'c':  /* RIS — Reset to Initial State */
+            vt100_screen_clear_all();
+            vt100_cur_row = 0;
+            vt100_cur_col = 0;
+            vt100_cur_attr = 0;
+            vt100_cur_fg = 7;
+            vt100_cur_bg = 0;
+            vt100_auto_wrap = true;
+            vt100_cursor_visible_flag = true;
+            vt100_decckm = false;
+            break;
+        case '=':  /* DECKPAM — Keypad Application Mode */
+        case '>':  /* DECKPNM — Keypad Numeric Mode */
+            break;
+        case '(':  /* SCS — Designate G0 charset */
+        case ')':  /* SCS — Designate G1 charset */
+        case '*':  /* SCS — Designate G2 charset */
+        case '+':  /* SCS — Designate G3 charset */
+        case '#':  /* DEC line attributes */
+            /* consume next byte; we ignore */
+            vt100_esc_state = VT100_ST_NORMAL;
             break;
         default:
             break;
@@ -508,61 +641,335 @@ private:
     }
 
     /* ================================================================== */
-    /*  输入字节流解析                                                      */
+    /*  CSI 序列分发 (完整 VT100 指令集)                                    */
+    /* ================================================================== */
+    void vt100_handle_csi(char final)
+    {
+        /* ── DEC 私有模式 (ESC [? ... h/l) ── */
+        if (vt100_priv_mode) {
+            switch (final) {
+            case 'h': /* DECSET */
+                if (vt100_params[0] == 1)  { vt100_decckm = true; fprintf(stderr, "[VT100-DBG] DECCKM ON (app cursor keys)\n"); }  /* DECCKM */
+                if (vt100_params[0] == 5)  {}  /* DECSCNM — reverse video */
+                if (vt100_params[0] == 6)  {}  /* DECOM — origin mode */
+                if (vt100_params[0] == 7)  { vt100_auto_wrap = true; }  /* DECAWM */
+                if (vt100_params[0] == 25) { vt100_cursor_visible_flag = true; }  /* DECTCEM */
+                if (vt100_params[0] == 1049) {} /* alt screen */
+                break;
+            case 'l': /* DECRST */
+                if (vt100_params[0] == 1)  { vt100_decckm = false; }
+                if (vt100_params[0] == 5)  {}
+                if (vt100_params[0] == 6)  {}
+                if (vt100_params[0] == 7)  { vt100_auto_wrap = false; }  /* DECAWM off */
+                if (vt100_params[0] == 25) { vt100_cursor_visible_flag = false; } /* DECTCEM hide */
+                if (vt100_params[0] == 1049) {}
+                break;
+            default:
+                break;
+            }
+            return;
+        }
+
+        /* ── Secondary DA / xterm 查询 (ESC [> ... c) ── */
+        if (vt100_sec_mode) {
+            fprintf(stderr, "[VT100-DBG] handle_csi SEC_MODE final='%c'(0x%02X) param[0]=%d\n",
+                    final, (unsigned char)final, vt100_params[0]);
+            switch (final) {
+            case 'c': /* Secondary Device Attributes */
+                /* Reply: VT100 (type 0), firmware v10, no options */
+                fprintf(stderr, "[VT100-DBG] SDA reply: \\033[>0;10;0c\n");
+                if (pty_master >= 0)
+                    write(pty_master, "\033[>0;10;0c", 10);
+                break;
+            case 'm': /* xterm set-modifyOtherKeys — ignore */
+                fprintf(stderr, "[VT100-DBG] SDA: set-modifyOtherKeys ignored\n");
+                break;
+            default:
+                fprintf(stderr, "[VT100-DBG] SDA: unhandled final byte\n");
+                break;
+            }
+            return;
+        }
+
+        switch (final) {
+        /* ── 光标移动 ───────────────────── */
+        case 'A': /* CUU */
+            vt100_cur_row -= defparam(0, 1);
+            if (vt100_cur_row < 0) vt100_cur_row = 0;
+            break;
+        case 'B': /* CUD */
+            vt100_cur_row += defparam(0, 1);
+            if (vt100_cur_row >= ROWS) vt100_cur_row = ROWS - 1;
+            break;
+        case 'C': /* CUF */
+            vt100_cur_col += defparam(0, 1);
+            if (vt100_cur_col >= COLS) vt100_cur_col = COLS - 1;
+            break;
+        case 'D': /* CUB */
+            vt100_cur_col -= defparam(0, 1);
+            if (vt100_cur_col < 0) vt100_cur_col = 0;
+            break;
+        case 'H': /* CUP — Cursor Position */
+        case 'f': /* HVP — Horizontal Vertical Position */
+            vt100_cur_row = defparam(0, 1) - 1;  /* 1-based → 0-based */
+            vt100_cur_col = defparam(1, 1) - 1;
+            if (vt100_cur_row < 0) vt100_cur_row = 0;
+            if (vt100_cur_row >= ROWS) vt100_cur_row = ROWS - 1;
+            if (vt100_cur_col < 0) vt100_cur_col = 0;
+            if (vt100_cur_col >= COLS) vt100_cur_col = COLS - 1;
+            break;
+        case 'G': /* CHA — Cursor Horizontal Absolute */
+            vt100_cur_col = defparam(0, 1) - 1;
+            if (vt100_cur_col < 0) vt100_cur_col = 0;
+            if (vt100_cur_col >= COLS) vt100_cur_col = COLS - 1;
+            break;
+        case 'd': /* VPA — Vertical Position Absolute */
+            vt100_cur_row = defparam(0, 1) - 1;
+            if (vt100_cur_row < 0) vt100_cur_row = 0;
+            if (vt100_cur_row >= ROWS) vt100_cur_row = ROWS - 1;
+            break;
+        case 's': /* SCP — Save Cursor Position (ANSI) */
+            vt100_saved_row  = vt100_cur_row;
+            vt100_saved_col  = vt100_cur_col;
+            vt100_saved_attr = vt100_cur_attr;
+            vt100_saved_fg   = vt100_cur_fg;
+            vt100_saved_bg   = vt100_cur_bg;
+            break;
+        case 'u': /* RCP — Restore Cursor Position (ANSI) */
+            vt100_cur_row  = clamp(vt100_saved_row, 0, ROWS - 1);
+            vt100_cur_col  = clamp(vt100_saved_col, 0, COLS - 1);
+            vt100_cur_attr = vt100_saved_attr;
+            vt100_cur_fg   = vt100_saved_fg;
+            vt100_cur_bg   = vt100_saved_bg;
+            break;
+
+        /* ── 擦除 ───────────────────────── */
+        case 'J': /* ED — Erase Display */
+            vt100_erase_display(defparam(0, 0));
+            break;
+        case 'K': /* EL — Erase Line */
+            vt100_erase_line(defparam(0, 0));
+            break;
+
+        /* ── 插入 / 删除 ────────────────── */
+        case 'L': /* IL — Insert Lines */
+            vt100_insert_lines(defparam(0, 1));
+            break;
+        case 'M': /* DL — Delete Lines (note: CSI M ≠ ESC M) */
+            vt100_delete_lines(defparam(0, 1));
+            break;
+        case '@': /* ICH — Insert Characters */
+            vt100_insert_chars(defparam(0, 1));
+            break;
+        case 'P': /* DCH — Delete Characters */
+            vt100_delete_chars(defparam(0, 1));
+            break;
+
+        /* ── SGR — Select Graphic Rendition ── */
+        case 'm':
+            for (int i = 0; i < vt100_param_count; i++) {
+                int val = vt100_params[i];
+                if (val == 0) {
+                    vt100_cur_attr = 0;
+                    vt100_cur_fg = 7;   /* white (rendered as green) */
+                    vt100_cur_bg = 0;
+                } else if (val == 1) {
+                    vt100_cur_attr |= 1;   /* ATTR_BOLD */
+                } else if (val == 4) {
+                    vt100_cur_attr |= 2;   /* ATTR_UNDERLINE */
+                } else if (val == 5) {
+                    vt100_cur_attr |= 4;   /* ATTR_BLINK */
+                } else if (val == 7) {
+                    vt100_cur_attr |= 8;   /* ATTR_REVERSE */
+                } else if (val == 22) {
+                    vt100_cur_attr &= ~1;
+                } else if (val == 24) {
+                    vt100_cur_attr &= ~2;
+                } else if (val == 25) {
+                    vt100_cur_attr &= ~4;
+                } else if (val == 27) {
+                    vt100_cur_attr &= ~8;
+                } else if (30 <= val && val <= 37) {
+                    vt100_cur_fg = val - 30;
+                } else if (40 <= val && val <= 47) {
+                    vt100_cur_bg = val - 40;
+                } else if (val == 39) {
+                    vt100_cur_fg = 7;
+                } else if (val == 49) {
+                    vt100_cur_bg = 0;
+                }
+            }
+            break;
+
+        /* ── 滚动区域 ────────────────────── */
+        case 'r': /* DECSTBM — Set Top and Bottom Margins */
+            /* acknowledged but not fully implemented */
+            break;
+
+        /* ── 设备控制 ────────────────────── */
+        case 'c': /* DA — Device Attributes: 回复 \033[?1;0c (VT100) */
+            if (pty_master >= 0) {
+                const char *reply = "\033[?1;0c";
+                write(pty_master, reply, strlen(reply));
+            }
+            break;
+        case 'n': /* DSR — Device Status Report */
+            fprintf(stderr, "[VT100-DBG] DSR query param[0]=%d\n", vt100_params[0]);
+            if (vt100_params[0] == 5) {
+                fprintf(stderr, "[VT100-DBG] DSR 5: reply \\033[0n (OK)\n");
+                if (pty_master >= 0) write(pty_master, "\033[0n", 4);
+            } else if (vt100_params[0] == 6) {
+                /* Cursor Position Report */
+                char buf[32];
+                int len = snprintf(buf, sizeof(buf), "\033[%d;%dR",
+                                   vt100_cur_row + 1, vt100_cur_col + 1);
+                fprintf(stderr, "[VT100-DBG] DSR 6: cursor=(%d,%d) reply=%s\n",
+                        vt100_cur_row + 1, vt100_cur_col + 1, buf);
+                if (pty_master >= 0) write(pty_master, buf, len);
+            }
+            break;
+
+        /* ── 模式设置 ────────────────────── */
+        case 'h': /* SM — Set Mode (non-private) */
+        case 'l': /* RM — Reset Mode (non-private) */
+            break;
+
+        default:
+            break;
+        }
+    }
+
+    /* ================================================================== */
+    /*  主字节流解析 (完整 VT100 状态机, 移植自 src/vt100.c)                  */
     /* ================================================================== */
     void vt100_process_bytes(const char *data, int len)
     {
+        /* ── DEBUG: dump raw PTY data ── */
+        if (len > 0 && len < 256) {
+            fprintf(stderr, "[VT100-DBG] process_bytes len=%d hex=", len);
+            for (int di = 0; di < len && di < 80; di++)
+                fprintf(stderr, "%02X ", (unsigned char)data[di]);
+            fprintf(stderr, "\n");
+        }
         for (int i = 0; i < len; i++)
         {
             unsigned char c = (unsigned char)data[i];
-            switch (vt100_esc_state)
-            {
-            case VT100_ESC_NORMAL:
-                if (c == 0x1b)
-                {
-                    vt100_esc_state = VT100_ESC_ESC;
-                    vt100_esc_len = 0;
+
+            /* ── 字符串终止检测 ───────────── */
+            /* skip_until_st 期间 vt100_esc_state 保持不变。
+             * OSC: BEL(0x07), ST(0x9C), 或裸反斜杠均可终止。
+             * DCS: 仅 BEL 或 ST 终止; 反斜杠不是 DCS 终止符
+             *      (DCS 使用两字节 ESC \ 序列)。
+             * 因此 vt100_esc_state == VT100_ST_OSC 守卫是必要的。 */
+            if (vt100_skip_until_st) {
+                if (c == 0x07 || c == 0x9C ||
+                    (c == '\\' && vt100_esc_state == VT100_ST_OSC)) {
+                    vt100_skip_until_st = false;
+                    vt100_esc_state = VT100_ST_NORMAL;
                 }
-                else
+                continue;
+            }
+
+            switch (vt100_esc_state) {
+
+            case VT100_ST_NORMAL:
+                if (c == 0x1B) {
+                    vt100_esc_state = VT100_ST_ESC;
+                    vt100_param_count = 0;
+                    vt100_param_val = 0;
+                    vt100_priv_mode = false;
+                    vt100_sec_mode = false;
+                    memset(vt100_params, 0, sizeof(vt100_params));
+                } else {
                     vt100_put_char((char)c);
+                }
                 break;
-            case VT100_ESC_ESC:
-                if (c == '[')
-                {
-                    vt100_esc_state = VT100_ESC_CSI;
-                    vt100_esc_len = 0;
+
+            case VT100_ST_ESC:
+                if (c == '[') {
+                    vt100_esc_state = VT100_ST_CSI;
+                } else if (c == ']') {
+                    vt100_esc_state = VT100_ST_OSC;
+                    vt100_skip_until_st = true;
+                } else if (c == 'P') {
+                    vt100_esc_state = VT100_ST_DCS;
+                    vt100_skip_until_st = true;
+                } else {
+                    vt100_handle_esc((char)c);
+                    vt100_esc_state = VT100_ST_NORMAL;
                 }
-                else if (c == ']')
-                {
-                    vt100_esc_state = VT100_ESC_OSC;
-                    vt100_esc_len = 0;
-                }
-                else if (c == 'c')
-                {
-                    vt100_screen_clear_all();
-                    vt100_cur_row = 0;
-                    vt100_cur_col = 0;
-                    vt100_esc_state = VT100_ESC_NORMAL;
-                }
-                else
-                    vt100_esc_state = VT100_ESC_NORMAL;
                 break;
-            case VT100_ESC_OSC:
-                if (c == 0x07)
-                    vt100_esc_state = VT100_ESC_NORMAL;
-                else if (c == 0x1b)
-                    vt100_esc_state = VT100_ESC_ESC;
-                break;
-            case VT100_ESC_CSI:
-                if (vt100_esc_len < (int)(sizeof(vt100_esc_buf) - 1))
-                    vt100_esc_buf[vt100_esc_len++] = (char)c;
-                if (c >= 0x40 && c <= 0x7E)
-                {
-                    vt100_esc_buf[vt100_esc_len] = '\0';
-                    vt100_handle_csi(vt100_esc_buf, vt100_esc_len);
-                    vt100_esc_state = VT100_ESC_NORMAL;
-                    vt100_esc_len = 0;
+
+            case VT100_ST_CSI:
+                if (c == '?') {
+                    vt100_priv_mode = true;
+                    vt100_esc_state = VT100_ST_CSI_QM;
+                } else if (c == '>') {
+                    fprintf(stderr, "[VT100-DBG] CSI '>' prefix detected! sec_mode=1\n");
+                    vt100_sec_mode = true;
+                    vt100_esc_state = VT100_ST_CSI_GT;
+                } else if (c >= '0' && c <= '9') {
+                    vt100_param_val = vt100_param_val * 10 + (c - '0');
+                } else if (c == ';') {
+                    if (vt100_param_count < VT100_MAX_PARAMS)
+                        vt100_params[vt100_param_count++] = vt100_param_val;
+                    vt100_param_val = 0;
+                } else if (c >= 0x20 && c <= 0x2F) {
+                    /* Intermediate byte — ignored */
+                } else {
+                    /* Final byte (0x40-0x7E) */
+                    if (vt100_param_count < VT100_MAX_PARAMS)
+                        vt100_params[vt100_param_count++] = vt100_param_val;
+                    vt100_handle_csi((char)c);
+                    vt100_esc_state = VT100_ST_NORMAL;
                 }
+                break;
+
+            case VT100_ST_CSI_QM:
+                if (c >= '0' && c <= '9') {
+                    vt100_param_val = vt100_param_val * 10 + (c - '0');
+                } else if (c == ';') {
+                    if (vt100_param_count < VT100_MAX_PARAMS)
+                        vt100_params[vt100_param_count++] = vt100_param_val;
+                    vt100_param_val = 0;
+                } else if (c >= 0x20 && c <= 0x2F) {
+                    /* intermediate */
+                } else {
+                    /* Final byte */
+                    if (vt100_param_count < VT100_MAX_PARAMS)
+                        vt100_params[vt100_param_count++] = vt100_param_val;
+                    vt100_handle_csi((char)c);
+                    vt100_esc_state = VT100_ST_NORMAL;
+                }
+                break;
+
+            case VT100_ST_CSI_GT:
+                /* ESC [> — Secondary DA / xterm extensions */
+                if (c >= '0' && c <= '9') {
+                    vt100_param_val = vt100_param_val * 10 + (c - '0');
+                } else if (c == ';') {
+                    if (vt100_param_count < VT100_MAX_PARAMS)
+                        vt100_params[vt100_param_count++] = vt100_param_val;
+                    vt100_param_val = 0;
+                } else if (c >= 0x20 && c <= 0x2F) {
+                    /* intermediate */
+                } else {
+                    /* Final byte */
+                    if (vt100_param_count < VT100_MAX_PARAMS)
+                        vt100_params[vt100_param_count++] = vt100_param_val;
+                    vt100_handle_csi((char)c);
+                    vt100_esc_state = VT100_ST_NORMAL;
+                }
+                break;
+
+            case VT100_ST_OSC:
+            case VT100_ST_DCS:
+                /* Handled by skip_until_st at top of loop */
+                vt100_esc_state = VT100_ST_NORMAL;
+                break;
+
+            default:
+                vt100_esc_state = VT100_ST_NORMAL;
                 break;
             }
         }
@@ -610,14 +1017,10 @@ private:
             return;
         int row = vt100_cur_row;
         int col = vt100_cur_col;
-        if (row < 0)
-            row = 0;
-        if (row >= ROWS)
-            row = ROWS - 1;
-        if (col < 0)
-            col = 0;
-        if (col >= COLS)
-            col = COLS - 1;
+        if (row < 0) row = 0;
+        if (row >= ROWS) row = ROWS - 1;
+        if (col < 0) col = 0;
+        if (col >= COLS) col = COLS - 1;
 
         char under = sanitize_ch(vt100_screen[row][col]);
         char s[2] = {under == ' ' ? ' ' : under, '\0'};
@@ -676,7 +1079,7 @@ private:
             ioctl(slave, TIOCSCTTY, 0);
             close(master);
             close(slave);
-            setenv("TERM", "xterm-256color", 1);
+            setenv("TERM", "vt100", 1);
             setenv("PYTHONUNBUFFERED", "1", 1);
             setenv("NO_COLOR", "1", 1);
 
@@ -728,10 +1131,14 @@ private:
 
         while ((n = read(pty_master, buf, sizeof(buf))) > 0)
         {
+            fprintf(stderr, "[VT100-DBG] poll_cb read %zd bytes from pty_master\n", n);
             vt100_process_bytes(buf, (int)n);
             changed = true;
         }
         read_errno = errno;
+
+        if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK)
+            fprintf(stderr, "[VT100-DBG] poll_cb read error errno=%d\n", errno);
 
         if (changed)
             vt100_render_all();
@@ -779,6 +1186,14 @@ private:
             show_cursor(false);
             return;
         }
+
+        /* 尊重 DECTCEM 光标可见性设置 */
+        if (!vt100_cursor_visible_flag)
+        {
+            show_cursor(false);
+            return;
+        }
+
         show_cursor(!vt100_cursor_vis);
     }
 
@@ -802,41 +1217,40 @@ private:
         switch (evdev_key)
         {
         case 28:
-            buf[0] = '\r';
-            len = 1;
-            break; /* KEY_ENTER      */
+            buf[0] = '\r'; len = 1; break;  /* KEY_ENTER      */
         case 14:
-            buf[0] = 0x7f;
-            len = 1;
-            break; /* KEY_BACKSPACE  */
+            buf[0] = 0x7f; len = 1; break;  /* KEY_BACKSPACE  */
         case 1:
-            buf[0] = 0x1b;
-            len = 1;
-            break; /* KEY_ESC        */
+            buf[0] = 0x1b; len = 1; break;  /* KEY_ESC        */
         case 103:
-            buf[0] = 0x1b;
-            buf[1] = '[';
-            buf[2] = 'A';
-            len = 3;
-            break; /* KEY_UP    */
+            /* KEY_UP: normal=\033[A, application=\033OA */
+            if (vt100_decckm) {
+                buf[0]=0x1b; buf[1]='O'; buf[2]='A'; len=3;
+            } else {
+                buf[0]=0x1b; buf[1]='['; buf[2]='A'; len=3;
+            }
+            break;
         case 108:
-            buf[0] = 0x1b;
-            buf[1] = '[';
-            buf[2] = 'B';
-            len = 3;
-            break; /* KEY_DOWN  */
+            if (vt100_decckm) {
+                buf[0]=0x1b; buf[1]='O'; buf[2]='B'; len=3;
+            } else {
+                buf[0]=0x1b; buf[1]='['; buf[2]='B'; len=3;
+            }
+            break;
         case 106:
-            buf[0] = 0x1b;
-            buf[1] = '[';
-            buf[2] = 'C';
-            len = 3;
-            break; /* KEY_RIGHT */
+            if (vt100_decckm) {
+                buf[0]=0x1b; buf[1]='O'; buf[2]='C'; len=3;
+            } else {
+                buf[0]=0x1b; buf[1]='['; buf[2]='C'; len=3;
+            }
+            break;
         case 105:
-            buf[0] = 0x1b;
-            buf[1] = '[';
-            buf[2] = 'D';
-            len = 3;
-            break; /* KEY_LEFT  */
+            if (vt100_decckm) {
+                buf[0]=0x1b; buf[1]='O'; buf[2]='D'; len=3;
+            } else {
+                buf[0]=0x1b; buf[1]='['; buf[2]='D'; len=3;
+            }
+            break;
         default:
             len = (int)strlen(utf8_str);
             if (len > 0 && len <= (int)sizeof(buf))
@@ -846,73 +1260,14 @@ private:
             break;
         }
 
-        if (len > 0)
+        if (len > 0) {
+            fprintf(stderr, "[VT100-DBG] write_key evdev=%u decckm=%d len=%d hex=",
+                    evdev_key, vt100_decckm, len);
+            for (int ki = 0; ki < len; ki++)
+                fprintf(stderr, "%02X ", (unsigned char)buf[ki]);
+            fprintf(stderr, "\n");
             write(pty_master, buf, (size_t)len);
+        }
     }
 
-    /** 将 LVGL LV_KEY_* 按键转为终端字节序列写入 PTY */
-    void app_console_handle_lv_key(uint32_t key)
-    {
-        if (!terminal_active || pty_master < 0)
-            return;
-        char buf[8];
-        int len = 0;
-
-        if (key == LV_KEY_ENTER)
-        {
-            buf[0] = '\r';
-            len = 1;
-        }
-        else if (key == LV_KEY_BACKSPACE)
-        {
-            buf[0] = 0x7f;
-            len = 1;
-        }
-        else if (key == LV_KEY_ESC)
-        {
-            buf[0] = 0x1b;
-            len = 1;
-        }
-        else if (key == LV_KEY_UP)
-        {
-            buf[0] = 0x1b;
-            buf[1] = '[';
-            buf[2] = 'A';
-            len = 3;
-        }
-        else if (key == LV_KEY_DOWN)
-        {
-            buf[0] = 0x1b;
-            buf[1] = '[';
-            buf[2] = 'B';
-            len = 3;
-        }
-        else if (key == LV_KEY_RIGHT)
-        {
-            buf[0] = 0x1b;
-            buf[1] = '[';
-            buf[2] = 'C';
-            len = 3;
-        }
-        else if (key == LV_KEY_LEFT)
-        {
-            buf[0] = 0x1b;
-            buf[1] = '[';
-            buf[2] = 'D';
-            len = 3;
-        }
-        else if (key >= 32 && key <= 126)
-        {
-            buf[0] = (char)key;
-            len = 1;
-        }
-        else if (key < 32)
-        {
-            buf[0] = (char)key;
-            len = 1;
-        }
-
-        if (len > 0)
-            write(pty_master, buf, (size_t)len);
-    }
 };

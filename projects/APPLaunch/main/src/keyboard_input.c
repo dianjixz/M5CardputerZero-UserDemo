@@ -113,6 +113,64 @@ tca8418_keymap_lookup(uint32_t keycode) {
     return NULL;
 }
 
+
+/* ============================================================
+ *  控制键 → 终端控制字符映射表
+ *  当 xkbcommon 对功能键不产生 utf8 时，兜底填充 ANSI 转义序列
+ * ============================================================ */
+struct ctrl_key_utf8_entry {
+    uint32_t    keycode;   /* linux/input.h 中的 KEY_xxx */
+    const char *utf8;      /* 终端控制字符 / ANSI 转义序列 */
+};
+
+static const struct ctrl_key_utf8_entry ctrl_key_utf8_map[] = {
+    /* ---- 单字节控制字符 ---- */
+    { KEY_ENTER,     "\r"      },   /* CR  (0x0D) */
+    { KEY_KPENTER,   "\r"      },   /* CR  小键盘回车 */
+    { KEY_BACKSPACE, "\x7f"    },   /* DEL (0x7F) */
+    { KEY_TAB,       "\t"      },   /* HT  (0x09) */
+    { KEY_ESC,       "\x1b"    },   /* ESC (0x1B) */
+
+    /* ---- ANSI 方向键 ---- */
+    { KEY_UP,        "\033[A"  },   /* CSI A */
+    { KEY_DOWN,      "\033[B"  },   /* CSI B */
+    { KEY_RIGHT,     "\033[C"  },   /* CSI C */
+    { KEY_LEFT,      "\033[D"  },   /* CSI D */
+
+    /* ---- ANSI 编辑键 ---- */
+    { KEY_HOME,      "\033[H"  },   /* CSI H  (或 "\033[1~") */
+    { KEY_END,       "\033[F"  },   /* CSI F  (或 "\033[4~") */
+    { KEY_DELETE,    "\033[3~" },   /* SS3 ~ */
+    { KEY_INSERT,    "\033[2~" },   /* CSI ~ */
+    { KEY_PAGEUP,    "\033[5~" },   /* CSI ~ */
+    { KEY_PAGEDOWN,  "\033[6~" },   /* CSI ~ */
+
+    /* ---- F1-F12 ---- */
+    { KEY_F1,        "\033OP"  },
+    { KEY_F2,        "\033OQ"  },
+    { KEY_F3,        "\033OR"  },
+    { KEY_F4,        "\033OS"  },
+    { KEY_F5,        "\033[15~"},
+    { KEY_F6,        "\033[17~"},
+    { KEY_F7,        "\033[18~"},
+    { KEY_F8,        "\033[19~"},
+    { KEY_F9,        "\033[20~"},
+    { KEY_F10,       "\033[21~"},
+    { KEY_F11,       "\033[23~"},
+    { KEY_F12,       "\033[24~"},
+};
+
+static const char *ctrl_key_utf8_lookup(uint32_t keycode) {
+    for (size_t i = 0; i < sizeof(ctrl_key_utf8_map) / sizeof(ctrl_key_utf8_map[0]); i++)
+        if (ctrl_key_utf8_map[i].keycode == keycode)
+            return ctrl_key_utf8_map[i].utf8;
+    return NULL;
+}
+
+
+
+
+
 /* ============================================================
  *  键盘上下文
  * ============================================================ */
@@ -351,6 +409,16 @@ static void process_key(struct kbd_ctx *kc, uint32_t code, int pressed)
         }
         if (item.codepoint == 0)
             item.codepoint = xkb_state_key_get_utf32(kc->state, keycode);
+    }
+    
+    /* ---------- 6.5 控制键兜底映射 ---------- */
+    /* xkbcommon 对功能键（UP/DOWN/ENTER/BACKSPACE 等）不产生 utf8，
+    * 这里手动填充 ANSI/VT100 终端控制字符，方便上层消费 */
+    if (item.utf8[0] == '\0') {
+        const char *ctrl = ctrl_key_utf8_lookup(code);
+        if (ctrl) {
+            snprintf(item.utf8, sizeof(item.utf8), "%s", ctrl);
+        }
     }
 
     /* ---------- 7. 重复控制 ---------- */
