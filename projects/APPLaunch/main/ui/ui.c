@@ -6,6 +6,9 @@
 #include "ui.h"
 #include "ui_helpers.h"
 
+LV_FONT_DECLARE(lv_font_source_han_sans_sc_14_cjk);
+LV_FONT_DECLARE(lv_font_source_han_sans_sc_16_cjk);
+
 ///////////////////// VARIABLES ////////////////////
 
 
@@ -106,7 +109,7 @@ lv_font_t *g_font_mono_12 = NULL;   /* 终端专用等宽字体 */
 
 void font_manager_init(void)
 {
-    
+#if LV_USE_FREETYPE
     g_font_cn_20 = lv_freetype_font_create(
         font_path, LV_FREETYPE_FONT_RENDER_MODE_BITMAP, 20,
         LV_FREETYPE_FONT_STYLE_NORMAL);
@@ -124,6 +127,12 @@ void font_manager_init(void)
     g_font_mono_12 = lv_freetype_font_create(
         mono_font_path, LV_FREETYPE_FONT_RENDER_MODE_BITMAP, 12,
         LV_FREETYPE_FONT_STYLE_NORMAL);
+#else
+    g_font_cn_20 = &lv_font_source_han_sans_sc_16_cjk;
+    g_font_cn_14 = &lv_font_source_han_sans_sc_14_cjk;
+    g_font_cn_12 = &lv_font_source_han_sans_sc_14_cjk;
+    g_font_mono_12 = &lv_font_montserrat_12;
+#endif
 }
 
 ///////////////////// SCREENS ////////////////////

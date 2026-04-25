@@ -5,8 +5,6 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <fcntl.h>
-#include <linux/fb.h>
-#include <sys/ioctl.h>
 #include <unordered_map>
 #include <list>
 #include <memory>
@@ -14,9 +12,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <signal.h>
-#include <pty.h>
-#include <termios.h>
-#include <errno.h>
 #include <vector>
 #include <keyboard_input.h>
 #include <functional>
@@ -304,7 +299,9 @@ private:
     void creat_input_group()
     {
         key_group = lv_group_create();
+        lv_obj_add_flag(ui_root, LV_OBJ_FLAG_CLICK_FOCUSABLE);
         lv_group_add_obj(key_group, ui_root);
+        lv_group_focus_obj(ui_root);
     }
 
     // static void static_event_handler(lv_event_t * e)

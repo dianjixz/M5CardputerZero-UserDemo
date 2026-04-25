@@ -5,7 +5,6 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <fcntl.h>
-#include <linux/fb.h>
 #include <sys/ioctl.h>
 #include <unordered_map>
 #include <list>
@@ -14,7 +13,11 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <signal.h>
+#if defined(__APPLE__)
+#include <util.h>
+#else
 #include <pty.h>
+#endif
 #include <termios.h>
 #include <errno.h>
 #include <vector>

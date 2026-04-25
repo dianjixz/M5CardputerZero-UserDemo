@@ -1,13 +1,16 @@
 import os
+import sys
 
 Import('env')
 with open(env['PROJECT_TOOL_S']) as f:
     exec(f.read())
 
+env.Append(CXXFLAGS=['-std=c++17'])
+
 SRCS = Glob('src/*.c*')
 INCLUDE = [ADir('.'), ADir('include')]
 PRIVATE_INCLUDE = []
-REQUIREMENTS = ['lvgl_component', 'pthread', 'input', 'xkbcommon', 'udev']
+REQUIREMENTS = ['lvgl_component', 'pthread']
 STATIC_LIB = []
 DYNAMIC_LIB = []
 DEFINITIONS = [] #'-std=c++20'
@@ -16,20 +19,103 @@ LDFLAGS = []
 LINK_SEARCH_PATH = []
 STATIC_FILES = []
 
+if sys.platform == 'darwin':
+    SRCS += [AFile('src/mac_text_renderer.mm')]
+    LDFLAGS += ['-framework', 'AppKit', '-framework', 'Foundation', '-framework', 'CoreGraphics']
+
 
 SRCS += append_srcs_dir(ADir('ui'))
+
+component_root = os.path.abspath(env['component_dir'])
+xiaozhi_main = os.path.normpath(
+    os.path.join(
+        component_root,
+        '..', '..', '..', '..',
+        'cardputer-xiaozhi',
+        'projects', 'XiaoZhiApp', 'main'
+    )
+)
+
+if os.path.isdir(xiaozhi_main):
+    INCLUDE.append(os.path.join(xiaozhi_main, 'include'))
+    SRCS += [
+        os.path.join(xiaozhi_main, 'src', 'application.cpp'),
+        os.path.join(xiaozhi_main, 'src', 'audio_pipeline.cpp'),
+        os.path.join(xiaozhi_main, 'src', 'config.cpp'),
+        os.path.join(xiaozhi_main, 'src', 'ota_client.cpp'),
+        os.path.join(xiaozhi_main, 'src', 'ws_client.cpp'),
+    ]
+    if 'CONFIG_V9_5_LV_USE_SDL' in os.environ:
+        SRCS += [os.path.join(xiaozhi_main, 'src', 'audio_pipeline_sdl.cpp')]
+        DEFINITIONS += ['-DAPPLAUNCH_USE_SDL_AUDIO=1']
 
 
 lvgl_component = list(filter(lambda x: x['target'] == 'lvgl_component', env['COMPONENTS']))[0]
 
 if 'CONFIG_V9_5_LV_USE_SDL' in os.environ:
     lvgl_component['REQUIREMENTS'] += ['SDL2']
-    lvgl_component['INCLUDE'] += ['/usr/include/SDL2']
-    lvgl_component['DEFINITIONS'] += ['-D_REENTRANT']
+    lvgl_component.setdefault('LDFLAGS', [])
+    if '-lSDL2' not in lvgl_component['LDFLAGS']:
+        lvgl_component['LDFLAGS'].append('-lSDL2')
+    if '-lSDL2' not in LDFLAGS:
+        LDFLAGS.append('-lSDL2')
 
-# # 添加 freetype 支持
-lvgl_component['REQUIREMENTS'] += ['freetype']
-lvgl_component['INCLUDE'] += ['/usr/include/freetype2', '/usr/include/libpng16']
+    if sys.platform == 'darwin':
+        env.Append(CCFLAGS=['-arch', 'arm64'])
+        env.Append(LINKFLAGS=['-Wl,-arch,arm64'])
+
+    sdl_include_candidates = [
+        '/opt/homebrew/include',
+        '/usr/local/include',
+        '/usr/include',
+        '/opt/homebrew/include/SDL2',
+        '/usr/local/include/SDL2',
+        '/usr/include/SDL2',
+    ]
+    for include_dir in sdl_include_candidates:
+        if os.path.exists(include_dir):
+            lvgl_component['INCLUDE'].append(include_dir)
+
+    sdl_library_candidates = [
+        '/opt/homebrew/lib',
+        '/usr/local/lib',
+    ]
+    for library_dir in sdl_library_candidates:
+        if os.path.exists(library_dir):
+            lvgl_component['LINK_SEARCH_PATH'].append(library_dir)
+
+    lvgl_component['DEFINITIONS'] += ['-D_REENTRANT']
+else:
+    REQUIREMENTS += ['input', 'xkbcommon', 'udev']
+
+use_freetype = 'CONFIG_V9_5_LV_USE_FREETYPE' in os.environ
+
+if use_freetype:
+    lvgl_component['REQUIREMENTS'] += ['freetype']
+
+    freetype_include_candidates = [
+        '/opt/homebrew/include/freetype2',
+        '/usr/local/include/freetype2',
+        '/usr/include/freetype2',
+        '/opt/homebrew/include/libpng16',
+        '/usr/local/include/libpng16',
+        '/usr/include/libpng16',
+    ]
+    for include_dir in freetype_include_candidates:
+        if os.path.exists(include_dir):
+            lvgl_component['INCLUDE'].append(include_dir)
+
+    freetype_library_candidates = [
+        '/usr/local/opt/freetype/lib',
+        '/usr/local/lib',
+        '/opt/homebrew/lib',
+        '/usr/lib',
+        '/usr/lib/aarch64-linux-gnu',
+        '/lib/aarch64-linux-gnu',
+    ]
+    for library_dir in freetype_library_candidates:
+        if os.path.exists(library_dir):
+            lvgl_component['LINK_SEARCH_PATH'].append(library_dir)
 
 for src in lvgl_component['SRCS']:
     if 'lv_sdl_keyboard.c' in str(src):

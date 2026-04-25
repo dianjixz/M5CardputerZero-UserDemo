@@ -7,7 +7,23 @@
 #include <stdlib.h>
 #include "ui/ui.h"
 #include "keyboard_input.h"
+#if defined(__linux__)
 #include <linux/input.h>
+#else
+#define KEY_ESC        1
+#define KEY_BACKSPACE  14
+#define KEY_TAB        15
+#define KEY_ENTER      28
+#define KEY_HOME      102
+#define KEY_UP        103
+#define KEY_PREVIOUS  104
+#define KEY_LEFT      105
+#define KEY_RIGHT     106
+#define KEY_END       107
+#define KEY_DOWN      108
+#define KEY_NEXT      109
+#define KEY_DELETE    111
+#endif
 #include <cstring>
 // #include "ui/inter_process_comms.h"
 
@@ -113,7 +129,7 @@ static void keypad_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
             if (root) {
                 lv_obj_send_event(root, (lv_event_code_t)LV_EVENT_KEYBOARD, elm);
             }
-            // printf("lv_obj_send_event event to root object over\n");
+            printf("lv_obj_send_event event to root object over\n");
 
             data->key = _evdev_process_key(elm->key_code);
             if(data->key)
@@ -225,6 +241,9 @@ static void lv_linux_indev_init(void)
 int main(void)
 {
 
+    setvbuf(stdout, NULL, _IONBF, 0);
+    setvbuf(stderr, NULL, _IONBF, 0);
+
     lv_init();
 
     /*Linux display device init*/
@@ -242,6 +261,12 @@ int main(void)
     printf("Entering main loop...\n");
     while(1) {
         lv_timer_handler();
+#if LV_USE_SDL
+        if(lv_display_get_next(NULL) == NULL) {
+            printf("All SDL displays closed, exiting main loop...\n");
+            break;
+        }
+#endif
         usleep(1000);
     }
 

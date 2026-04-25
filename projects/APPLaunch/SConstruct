@@ -30,6 +30,8 @@ elif arch != "aarch64":
         os.makedirs("build/config", exist_ok=True)
         with open("build/config/config_tmp.mk", "w") as f:
             f.write("CONFIG_V9_5_LV_USE_SDL=y\n")
+            if sys.platform == "darwin":
+                f.write("# CONFIG_V9_5_LV_USE_FREETYPE is not set\n")
 
 # CardputerZero 本机编译
 else:

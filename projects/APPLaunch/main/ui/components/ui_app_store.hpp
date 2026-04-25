@@ -5,7 +5,43 @@
 #include <list>
 #include <set>
 #include <iostream>
+#if defined(__linux__)
 #include <linux/input.h>
+#else
+#ifndef KEY_UP
+#define KEY_UP 103
+#endif
+#ifndef KEY_DOWN
+#define KEY_DOWN 108
+#endif
+#ifndef KEY_LEFT
+#define KEY_LEFT 105
+#endif
+#ifndef KEY_RIGHT
+#define KEY_RIGHT 106
+#endif
+#ifndef KEY_ENTER
+#define KEY_ENTER 28
+#endif
+#ifndef KEY_ESC
+#define KEY_ESC 1
+#endif
+#ifndef KEY_Z
+#define KEY_Z 44
+#endif
+#ifndef KEY_C
+#define KEY_C 46
+#endif
+#ifndef KEY_F
+#define KEY_F 33
+#endif
+#ifndef KEY_X
+#define KEY_X 45
+#endif
+#ifndef KEY_TAB
+#define KEY_TAB 15
+#endif
+#endif
 struct store_app_info
 {
     std::string name;

@@ -4,18 +4,16 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <fcntl.h>
-#include <linux/fb.h>
-#include <sys/ioctl.h>
 #include <unordered_map>
 #include <list>
 #include <memory>
 #include <string>
 #include <functional>
-#include <chrono>
 #include "ui_launch_page.hpp"
 #include "ui_app_store.hpp"
 #include "ui_app_music.hpp"
 #include "ui_app_setup.hpp"
+#include "ui_app_xiaozhi.hpp"
 #include "ui_app_console.hpp"
 #include "ui_app_IpPanel.hpp"
 
@@ -48,12 +46,6 @@ struct app
         std::string exec,
         bool terminal);
 
-    // ① 外部命令
-    app(std::string name,
-        std::string icon,
-        std::string exec,
-        bool terminal, bool sysplause);
-
     // ② 内置 UI 页面
     template <class PageT>
     app(std::string name,
@@ -77,32 +69,31 @@ public:
     app_launch_S()
     {
         app_list.emplace_back("Python",
-                              "A:/dist/images/PYTHON_logo.png", "python3", true, false);
+                              "A:/dist/images/PYTHON_logo.png", "python3", true);
         app_list.emplace_back("STORE",
                               "A:/dist/images/Store_logo.png", page_v<UIStorePage>);
         app_list.emplace_back("CLI",
-                              "A:/dist/images/CLI_logo.png", "bash", true, false);
+                              "A:/dist/images/CLI_logo.png", "bash", true);
         app_list.emplace_back("CLAW",
                               "A:/dist/images/CLAW_logo.png", "/home/pi/zeroclaw agent", true);
         app_list.emplace_back("SETTING",
                               "A:/dist/images/SETTING_logo.png", page_v<UISetupPage>);
         app_list.emplace_back("MUSIC",
                               "A:/dist/images/MUSIC_logo.png", page_v<UIMusicPage>);
-        app_list.emplace_back("AUDIO_PLAYER",
+        app_list.emplace_back("XIAOZHI",
+                              "A:/dist/images/CLI_logo.png", page_v<UIXiaoZhiPage>);
+        app_list.emplace_back("NIHAO",
                               "A:/dist/images/MUSIC_logo.png",
-                              "tinyplay -D1 -d0 /home/pi/zhou.wav",
+                              "/home/nihao/w2T/github/M5CardputerZero-UserDemo/projects/UserDemo/nihao",
                               true);
         app_list.emplace_back("IP_PANEL",
                               "A:/dist/images/ssh.png", page_v<UIIpPanelPage>);
-
-        app_list.emplace_back("MATH",
-                              "A:/dist/images/math.png", 
-                              "/home/pi/M5CardputerZero-Calculator-linux-aarch64", false);
     }
 
     void launch_app()
     {
         auto it = std::next(app_list.begin(), current_app);
+        printf("Launching app: %s\n", it->Name.c_str());
         it->launch(this);
     }
 
@@ -123,15 +114,15 @@ public:
     }
 
     // 改为接收 std::string，不再依赖 app::Exec 成员
-    void launch_Exec_in_terminal(const std::string &exec, bool sysplause = true)
+    void launch_Exec_in_terminal(const std::string &exec)
     {
         printf("Launching terminal app: %s\n", exec.c_str());
         auto p = std::make_shared<UIConsolePage>();
         app_Page = p;
         lv_disp_load_scr(p->get_ui());
         lv_indev_set_group(lv_indev_get_next(NULL), p->get_key_group());
+        lv_group_focus_obj(p->get_ui());
         p->go_back_home = std::bind(&app_launch_S::go_back_home, this);
-        p->terminal_sysplause = sysplause;
         p->exec(exec);
     }
 
@@ -140,7 +131,7 @@ public:
         printf("Launching external app: %s\n", exec.c_str());
         lv_disp_t *disp = lv_disp_get_default();
         lv_indev_t *indev = lv_indev_get_next(NULL);
-        LVGL_RUN_FLAGE = 0;
+
         if (indev)
             lv_indev_set_group(indev, NULL);
         lv_timer_enable(false);
@@ -155,85 +146,14 @@ public:
         }
         else if (pid > 0)
         {
-            pid_t pid_ret;
             int status;
-            int end_status = 0;
-            std::chrono::time_point<std::chrono::steady_clock> start_time;
-            std::chrono::time_point<std::chrono::steady_clock> end_time;
-            int ctrl_c_count = 0;
-            for(;;)
-            {
-                if(end_status == 0)
-                {
-                    pid_ret = waitpid(pid, &status, WNOHANG);
-                    if (pid_ret > 0)
-                        break;
-                    usleep(100000); // 100ms
-                    if(LVGL_HOME_KEY_FLAGE)
-                    {
-                        end_status = 1;
-                        start_time = std::chrono::steady_clock::now();
-                    }
-                }
-                if(end_status == 1)
-                {
-                    if(LVGL_HOME_KEY_FLAGE)
-                    {
-                        end_time = std::chrono::steady_clock::now();
-                        if(std::chrono::duration_cast<std::chrono::seconds>(end_time - start_time).count() >= 5)
-                        {
-                            // kill(pid, SIGINT);
-                            end_status = 2;
-                        }
-                    }
-                    else
-                    {
-                        end_status = 0;
-                    }
-                }
-                if(end_status == 2)
-                {
-                    ctrl_c_count ++;
-                    kill(pid, SIGINT);
-                    usleep(100000); // 100ms
-                    pid_ret = waitpid(pid, &status, WNOHANG);
-                    if (pid_ret > 0)
-                        break;
-                    if(ctrl_c_count >= 30)
-                    {
-                        // kill(pid, SIGKILL);
-                        end_status = 3;
-                        ctrl_c_count = 0 ;
-                    }
-                }
-                if(end_status == 3)
-                {
-                    ctrl_c_count ++;
-                    kill(pid, SIGKILL);
-                    usleep(100000); // 100ms
-                    pid_ret = waitpid(pid, &status, WNOHANG);
-                    if (pid_ret > 0)
-                        break;
-                    if (pid_ret < 0)
-                        break;
-                    if(ctrl_c_count >= 300)
-                    {
-                        break;
-                    }
-                }
-            }
-            
-            // waitpid(pid, &status, 0);
-            if (WIFEXITED(status)) {
-                printf("App %s exited normally, code=%d\n", exec.c_str(), WEXITSTATUS(status));
-            } else if (WIFSIGNALED(status)) {
-                printf("App %s killed by signal %d\n", exec.c_str(), WTERMSIG(status));
-            }
+            waitpid(pid, &status, 0);
+            printf("App %s exited with status %d\n",
+                   exec.c_str(), WEXITSTATUS(status));
             lv_timer_enable(true);
             if (indev)
-                lv_indev_set_group(indev, Screen1group);
+                lv_indev_set_group(lv_indev_get_next(NULL), Screen1group);
             lv_disp_load_scr(ui_Screen1);
-            lv_obj_invalidate(lv_screen_active());
             lv_refr_now(disp);
         }
         else
@@ -243,7 +163,6 @@ public:
             if (indev)
                 lv_indev_set_group(indev, lv_group_get_default());
         }
-        LVGL_RUN_FLAGE = 1;
     }
 
     void zuo(lv_obj_t *panel, lv_obj_t *label)
@@ -291,22 +210,6 @@ inline app::app(std::string name,
     };
 }
 
-inline app::app(std::string name,
-                std::string icon,
-                std::string exec,
-                bool terminal,
-                bool sysplause)
-    : Name(std::move(name)), Icon(std::move(icon))
-{
-    launch = [exec = std::move(exec), terminal, sysplause](app_launch_S *ctx)
-    {
-        if (terminal)
-            ctx->launch_Exec_in_terminal(exec, sysplause);
-        else
-            ctx->launch_Exec(exec);
-    };
-}
-
 template <class PageT>
 app::app(std::string name,
          std::string icon,
@@ -320,6 +223,7 @@ app::app(std::string name,
         lv_disp_load_scr(p->get_ui());
         lv_indev_set_group(lv_indev_get_next(NULL),
                            p->get_key_group());
+        lv_group_focus_obj(p->get_ui());
         p->go_back_home =
             std::bind(&app_launch_S::go_back_home, self);
     };
