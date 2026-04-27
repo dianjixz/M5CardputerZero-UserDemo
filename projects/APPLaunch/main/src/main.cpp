@@ -11,7 +11,9 @@
 #include <cstring>
 // #include "ui/inter_process_comms.h"
 
-
+// #define BACKWARD_HAS_DW 1
+// #include "backward.hpp"
+// #include "backward.h"
 
 
 static const char *getenv_default(const char *name, const char *dflt)
@@ -135,7 +137,8 @@ static void lv_linux_indev_init(void)
     const char *keyboard_device = getenv_default("LV_LINUX_KEYBOARD_DEVICE", "/dev/input/by-path/platform-3f804000.i2c-event");
     const char *keyboard_map = getenv_default("LV_LINUX_KEYBOARD_MAP", "/usr/share/keymaps/tca8418_keypad_m5stack_keymap.map");
     // /home/nihao/w2T/github/m5stack-linux-dtoverlays/modules/tca8418-1.0/tca8418_keypad_m5stack_keymap.map
- 
+    setenv("APPLAUNCH_LINUX_KEYBOARD_DEVICE", keyboard_device, 1);
+    setenv("APPLAUNCH_LINUX_KEYBOARD_MAP", keyboard_map, 1);
  
     {
         pthread_t keyboard_read_thread_id;
@@ -174,6 +177,7 @@ static void lv_linux_disp_init(void)
     if ((device == NULL) && (get_st7789v_fbdev(fbdev, sizeof(fbdev)) == 0)) {
         device = fbdev;
     }
+    setenv("APPLAUNCH_LINUX_FBDEV_DEVICE", device, 1);
     printf("Using framebuffer device: %s\n", device);
     lv_display_t * disp = lv_linux_fbdev_create();
     if(disp == NULL) {
