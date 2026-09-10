@@ -30,8 +30,14 @@
 #include <unordered_map>
 #include <vector>
 
+#if defined(__linux__) || defined(__APPLE__)
+#define CP0_HAS_POSIX_PTY 1
+#endif
+
 #if defined(__linux__)
 #include <pty.h>
+#elif defined(__APPLE__)
+#include <util.h>
 #endif
 
 namespace {
@@ -57,7 +63,7 @@ public:
 
     pty_handle_t open(const char *cmd, const char *const *args, int cols, int rows)
     {
-#if defined(__linux__)
+#if defined(CP0_HAS_POSIX_PTY)
         if (!cmd || !cmd[0]) return NULL;
 
         int master_fd = -1;
@@ -119,7 +125,7 @@ public:
 
     int read(pty_handle_t pty, char *buf, size_t buf_size)
     {
-#if defined(__linux__)
+#if defined(CP0_HAS_POSIX_PTY)
         std::lock_guard<std::mutex> lock(handles_mutex_);
         cp0_pty_handle *h = resolve(pty);
         if (!h || !buf || buf_size == 0) return -1;
@@ -139,7 +145,7 @@ public:
 
     int write(pty_handle_t pty, const char *buf, size_t len)
     {
-#if defined(__linux__)
+#if defined(CP0_HAS_POSIX_PTY)
         std::lock_guard<std::mutex> lock(handles_mutex_);
         cp0_pty_handle *h = resolve(pty);
         if (!h || !buf) return -1;
@@ -154,7 +160,7 @@ public:
 
     int check_child(pty_handle_t pty, int *exit_status)
     {
-#if defined(__linux__)
+#if defined(CP0_HAS_POSIX_PTY)
         std::lock_guard<std::mutex> lock(handles_mutex_);
         cp0_pty_handle *h = resolve(pty);
         if (!h) return -1;
@@ -181,7 +187,7 @@ public:
 
     int resize(pty_handle_t pty, int cols, int rows)
     {
-#if defined(__linux__)
+#if defined(CP0_HAS_POSIX_PTY)
         std::lock_guard<std::mutex> lock(handles_mutex_);
         cp0_pty_handle *h = resolve(pty);
         if (!h) return -1;
@@ -199,7 +205,7 @@ public:
 
     bool close(pty_handle_t pty)
     {
-#if defined(__linux__)
+#if defined(CP0_HAS_POSIX_PTY)
         cp0_pty_handle *handle = nullptr;
         {
             std::lock_guard<std::mutex> lock(handles_mutex_);
@@ -218,7 +224,7 @@ public:
 
     void shutdown() noexcept
     {
-#if defined(__linux__)
+#if defined(CP0_HAS_POSIX_PTY)
         std::unordered_map<uintptr_t, cp0_pty_handle *> handles;
         try {
             std::lock_guard<std::mutex> lock(handles_mutex_);
@@ -257,7 +263,7 @@ public:
 private:
     static void cleanup(cp0_pty_handle *handle) noexcept
     {
-#if defined(__linux__)
+#if defined(CP0_HAS_POSIX_PTY)
         if (!handle) return;
         if (!handle->child_reaped) {
             (void)kill(handle->child_pid, SIGKILL);
@@ -340,6 +346,8 @@ private:
             (void)shell_result;
             (void)chdir_result;
         }
+#else
+        (void)configured_user;
 #endif
     }
 
@@ -388,7 +396,9 @@ private:
 
     std::unordered_map<uintptr_t, cp0_pty_handle *> handles_;
     std::mutex handles_mutex_;
+#if defined(CP0_HAS_POSIX_PTY)
     bool accepting_ = true;
+#endif
 };
 
 std::mutex g_pty_mutex;
@@ -431,3 +441,5 @@ extern "C" void deinit_pty(void) noexcept
     } catch (...) {
     }
 }
+
+#undef CP0_HAS_POSIX_PTY
