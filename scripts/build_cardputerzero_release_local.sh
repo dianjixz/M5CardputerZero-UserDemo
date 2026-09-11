@@ -108,8 +108,12 @@ echo "=== Aggregating release payload ==="
 install -d "$ROOT/projects/APPLaunch/dist/bin"
 install -m 0755 "$ROOT/projects/AppStore/dist/M5CardputerZero-AppStore" \
     "$ROOT/projects/APPLaunch/dist/bin/"
-install -m 0755 "$ROOT/projects/Calculator/dist/M5CardputerZero-Calculator" \
-    "$ROOT/projects/APPLaunch/dist/bin/"
+calculator_bin="$ROOT/projects/Calculator/dist/M5CardputerZero-Calculator"
+if [ ! -f "$calculator_bin" ]; then
+    calculator_bin="$ROOT/projects/Calculator/dist/Calculator"
+fi
+install -m 0755 "$calculator_bin" \
+    "$ROOT/projects/APPLaunch/dist/bin/M5CardputerZero-Calculator"
 install -m 0755 "$ROOT/projects/ZClaw/dist/ZClaw" \
     "$ROOT/projects/APPLaunch/dist/bin/"
 

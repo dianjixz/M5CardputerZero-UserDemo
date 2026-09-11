@@ -174,7 +174,11 @@ jobs:
       run: |
         mkdir -p projects/APPLaunch/dist/bin
         cp projects/AppStore/dist/M5CardputerZero-AppStore projects/APPLaunch/dist/bin/
-        cp projects/Calculator/dist/M5CardputerZero-Calculator projects/APPLaunch/dist/bin/
+        calculator_bin=projects/Calculator/dist/M5CardputerZero-Calculator
+        if [ ! -f "$calculator_bin" ]; then
+            calculator_bin=projects/Calculator/dist/Calculator
+        fi
+        cp "$calculator_bin" projects/APPLaunch/dist/bin/M5CardputerZero-Calculator
         cp projects/ZClaw/dist/ZClaw projects/APPLaunch/dist/bin/
         mkdir -p projects/APPLaunch/dist/APPLaunch
         cp -a projects/AppStore/dist/APPLaunch/. projects/APPLaunch/dist/APPLaunch/
